@@ -1,0 +1,687 @@
+// OptiVault — multi-tenant optical practice management + accounting
+// SQLite for local development. For production switch provider to "postgresql"
+// and point DATABASE_URL at your Postgres instance.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────── SaaS / tenancy ───────────────────────────
+
+model Plan {
+  id               String         @id @default(cuid())
+  code             String         @unique // SOLO | PRACTICE | GROUP
+  name             String
+  tagline          String
+  priceMonthlyUsd  Float
+  priceYearlyUsd   Float
+  maxBranches      Int // 0 = unlimited
+  maxUsers         Int // 0 = unlimited
+  monthlyMessages  Int // SMS/WhatsApp messages included per month
+  features         String // JSON array of feature strings
+  sortOrder        Int            @default(0)
+  organizations    Organization[]
+}
+
+model Organization {
+  id                    String    @id @default(cuid())
+  name                  String
+  slug                  String    @unique
+  email                 String?
+  phone                 String?
+  address               String?
+  country               String    @default("Zimbabwe")
+  taxNumber             String?
+  logoUrl               String?
+  baseCurrency          String    @default("USD")
+  vatRate               Float     @default(0) // percent, e.g. 15.5
+  consultationFee       Float     @default(25) // default eye test fee, base currency
+  recallMonths          Int       @default(24)
+  recallLeadDays        Int       @default(30) // remind this many days before due
+  smsProvider           String    @default("log") // log | twilio | africastalking
+  whatsappProvider      String    @default("link") // link | twilio | cloud
+  smsSenderId           String?
+  planId                String?
+  plan                  Plan?     @relation(fields: [planId], references: [id])
+  billingCycle          String    @default("MONTHLY") // MONTHLY | YEARLY
+  subscriptionStatus    String    @default("TRIALING") // TRIALING | ACTIVE | PAST_DUE | CANCELLED
+  trialEndsAt           DateTime?
+  currentPeriodEnd      DateTime?
+  createdAt             DateTime  @default(now())
+
+  branches              Branch[]
+  users                 User[]
+  currencies            Currency[]
+  patients              Patient[]
+  medicalAids           MedicalAid[]
+  suppliers             Supplier[]
+  products              Product[]
+  accounts              Account[]
+  journalEntries        JournalEntry[]
+  orders                Order[]
+  receipts              Receipt[]
+  claims                MedicalAidClaim[]
+  purchases             Purchase[]
+  expenses              Expense[]
+  assets                Asset[]
+  appointments          Appointment[]
+  followUps             FollowUp[]
+  messages              Message[]
+  templates             MessageTemplate[]
+  subscriptionInvoices  SubscriptionInvoice[]
+  counters              Counter[]
+  auditLogs             AuditLog[]
+}
+
+model SubscriptionInvoice {
+  id             String       @id @default(cuid())
+  orgId          String
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  number         String       @unique
+  planCode       String
+  cycle          String
+  amount         Float
+  currency       String       @default("USD")
+  status         String       @default("OPEN") // OPEN | PAID | VOID
+  method         String? // PAYNOW | ECOCASH | STRIPE | BANK | MANUAL
+  reference      String?
+  periodStart    DateTime
+  periodEnd      DateTime
+  paidAt         DateTime?
+  createdAt      DateTime     @default(now())
+}
+
+model Counter {
+  id     String       @id @default(cuid())
+  orgId  String
+  org    Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  key    String // PAT | ORD | RCT | CLM | PUR | EXP | JNL | AST
+  value  Int          @default(0)
+
+  @@unique([orgId, key])
+}
+
+model Branch {
+  id           String        @id @default(cuid())
+  orgId        String
+  organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name         String
+  code         String
+  address      String?
+  phone        String?
+  active       Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  users        User[]
+  patients     Patient[]
+  stock        StockLevel[]
+  movements    StockMovement[]
+  orders       Order[]
+  receipts     Receipt[]
+  purchases    Purchase[]
+  expenses     Expense[]
+  assets       Asset[]
+  appointments Appointment[]
+  prescriptions Prescription[]
+  journalLines JournalLine[]
+
+  @@unique([orgId, code])
+}
+
+model User {
+  id            String        @id @default(cuid())
+  orgId         String?
+  organization  Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branchId      String?
+  branch        Branch?       @relation(fields: [branchId], references: [id])
+  name          String
+  email         String        @unique
+  phone         String?
+  passwordHash  String
+  role          String        @default("RECEPTION") // OWNER | ADMIN | OPTOMETRIST | RECEPTION | ACCOUNTANT
+  isSuperAdmin  Boolean       @default(false)
+  active        Boolean       @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime      @default(now())
+  prescriptions Prescription[]
+  appointments  Appointment[]
+  followUps     FollowUp[]
+}
+
+model AuditLog {
+  id        String       @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId    String?
+  action    String
+  entity    String
+  entityId  String?
+  detail    String?
+  createdAt DateTime     @default(now())
+}
+
+model Currency {
+  id           String       @id @default(cuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  code         String // USD, ZWG, ZAR
+  name         String
+  symbol       String
+  rate         Float // units of this currency per 1 unit of base currency
+  isBase       Boolean      @default(false)
+  active       Boolean      @default(true)
+  updatedAt    DateTime     @updatedAt
+  history      ExchangeRate[]
+
+  @@unique([orgId, code])
+}
+
+model ExchangeRate {
+  id         String   @id @default(cuid())
+  currencyId String
+  currency   Currency @relation(fields: [currencyId], references: [id], onDelete: Cascade)
+  rate       Float
+  effective  DateTime @default(now())
+}
+
+// ─────────────────────────── Clinical ───────────────────────────
+
+model MedicalAid {
+  id               String            @id @default(cuid())
+  orgId            String
+  organization     Organization      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name             String
+  code             String?
+  phone            String?
+  email            String?
+  requiresPreAuth  Boolean           @default(true)
+  paymentTermsDays Int               @default(30)
+  active           Boolean           @default(true)
+  patients         Patient[]
+  orders           Order[]
+  claims           MedicalAidClaim[]
+}
+
+model Patient {
+  id               String         @id @default(cuid())
+  orgId            String
+  organization     Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branchId         String?
+  branch           Branch?        @relation(fields: [branchId], references: [id])
+  patientNo        String
+  title            String?
+  firstName        String
+  lastName         String
+  dob              DateTime?
+  gender           String?
+  nationalId       String?
+  phone            String?
+  whatsapp         String?
+  email            String?
+  address          String?
+  occupation       String?
+  medicalAidId     String?
+  medicalAid       MedicalAid?    @relation(fields: [medicalAidId], references: [id])
+  medicalAidNo     String?
+  medicalAidPlan   String?
+  principalMember  String?
+  medicalHistory   String?
+  notes            String?
+  consentSms       Boolean        @default(true)
+  consentWhatsapp  Boolean        @default(true)
+  lastExamDate     DateTime?
+  nextRecallDate   DateTime?
+  lastRecallSentAt DateTime?
+  createdAt        DateTime       @default(now())
+  prescriptions    Prescription[]
+  orders           Order[]
+  receipts         Receipt[]
+  appointments     Appointment[]
+  followUps        FollowUp[]
+  messages         Message[]
+  claims           MedicalAidClaim[]
+
+  @@unique([orgId, patientNo])
+  @@index([orgId, lastName])
+  @@index([orgId, nextRecallDate])
+}
+
+model Prescription {
+  id              String    @id @default(cuid())
+  patientId       String
+  patient         Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  branchId        String?
+  branch          Branch?   @relation(fields: [branchId], references: [id])
+  optometristId   String?
+  optometrist     User?     @relation(fields: [optometristId], references: [id])
+  examDate        DateTime  @default(now())
+  rxType          String    @default("SPECTACLES") // SPECTACLES | CONTACT_LENS
+  // Right eye (OD)
+  odSph           Float?
+  odCyl           Float?
+  odAxis          Int?
+  odAdd           Float?
+  odPrism         Float?
+  odBase          String?
+  odVa            String?
+  // Left eye (OS)
+  osSph           Float?
+  osCyl           Float?
+  osAxis          Int?
+  osAdd           Float?
+  osPrism         Float?
+  osBase          String?
+  osVa            String?
+  pdDistance      Float?
+  pdNear          Float?
+  segHeight       Float?
+  iopOd           Float?
+  iopOs           Float?
+  // Contact lens specifics
+  clBrand         String?
+  clBaseCurve     String?
+  clDiameter      String?
+  chiefComplaint  String?
+  diagnosis       String?
+  lensRecommendation String? // SINGLE_VISION | BIFOCAL | MULTIFOCAL | OFFICE
+  recommendations String?
+  notes           String?
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+  orders          Order[]
+}
+
+model Appointment {
+  id            String       @id @default(cuid())
+  orgId         String
+  organization  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branchId      String
+  branch        Branch       @relation(fields: [branchId], references: [id])
+  patientId     String?
+  patient       Patient?     @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  guestName     String?
+  guestPhone    String?
+  optometristId String?
+  optometrist   User?        @relation(fields: [optometristId], references: [id])
+  startsAt      DateTime
+  durationMin   Int          @default(30)
+  type          String       @default("EYE_EXAM") // EYE_EXAM | CONTACT_LENS | COLLECTION | FOLLOW_UP | REPAIR | CONSULTATION
+  status        String       @default("BOOKED") // BOOKED | CONFIRMED | ARRIVED | COMPLETED | NO_SHOW | CANCELLED
+  notes         String?
+  reminderSent  Boolean      @default(false)
+  createdAt     DateTime     @default(now())
+
+  @@index([orgId, startsAt])
+}
+
+model FollowUp {
+  id           String       @id @default(cuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  patientId    String
+  patient      Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  assignedToId String?
+  assignedTo   User?        @relation(fields: [assignedToId], references: [id])
+  dueDate      DateTime
+  reason       String
+  status       String       @default("PENDING") // PENDING | DONE | CANCELLED
+  outcome      String?
+  createdAt    DateTime     @default(now())
+}
+
+// ─────────────────────────── Inventory ───────────────────────────
+
+model Supplier {
+  id           String       @id @default(cuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name         String
+  contactName  String?
+  phone        String?
+  email        String?
+  address      String?
+  isLab        Boolean      @default(false)
+  products     Product[]
+  purchases    Purchase[]
+}
+
+model Product {
+  id           String       @id @default(cuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  category     String // FRAME | LENS | CONTACT_LENS | ACCESSORY | CONSUMABLE
+  sku          String
+  name         String
+  brand        String?
+  model        String?
+  colour       String?
+  reference    String? // reference / colour code printed on the frame temple
+  frameSize    String? // eye-bridge-temple, e.g. 52-18-140
+  material     String?
+  gender       String?
+  lensType     String? // SINGLE_VISION | BIFOCAL | MULTIFOCAL | OFFICE
+  lensIndex    String? // 1.50 | 1.56 | 1.60 | 1.67 | 1.74
+  coating      String? // AR, Blue-cut, Photochromic, Hard coat
+  unit         String       @default("pcs")
+  costPrice    Float        @default(0) // base currency
+  sellPrice    Float        @default(0) // base currency
+  reorderLevel Int          @default(2)
+  trackStock   Boolean      @default(true)
+  supplierId   String?
+  supplier     Supplier?    @relation(fields: [supplierId], references: [id])
+  active       Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  stock        StockLevel[]
+  movements    StockMovement[]
+  orderItems   OrderItem[]
+  purchaseItems PurchaseItem[]
+
+  @@unique([orgId, sku])
+}
+
+model StockLevel {
+  id        String  @id @default(cuid())
+  productId String
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branchId  String
+  branch    Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  quantity  Float   @default(0)
+
+  @@unique([productId, branchId])
+}
+
+model StockMovement {
+  id        String   @id @default(cuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  branchId  String
+  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  quantity  Float // positive = in, negative = out
+  unitCost  Float    @default(0)
+  type      String // PURCHASE | SALE | ADJUSTMENT | TRANSFER_IN | TRANSFER_OUT | RETURN
+  reference String?
+  note      String?
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────── Sales ───────────────────────────
+
+model Order {
+  id                String       @id @default(cuid())
+  orgId             String
+  organization      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branchId          String
+  branch            Branch       @relation(fields: [branchId], references: [id])
+  orderNo           String
+  patientId         String
+  patient           Patient      @relation(fields: [patientId], references: [id])
+  prescriptionId    String?
+  prescription      Prescription? @relation(fields: [prescriptionId], references: [id])
+  status            String       @default("QUOTE") // QUOTE | AWAITING_AUTH | ORDERED | IN_LAB | READY | COLLECTED | CANCELLED
+  currency          String
+  exchangeRate      Float        @default(1)
+  subtotal          Float        @default(0)
+  discount          Float        @default(0)
+  taxRate           Float        @default(0)
+  tax               Float        @default(0)
+  total             Float        @default(0)
+  medicalAidId      String?
+  medicalAid        MedicalAid?  @relation(fields: [medicalAidId], references: [id])
+  medicalAidPortion Float        @default(0)
+  patientPortion    Float        @default(0)
+  amountPaid        Float        @default(0) // patient payments received
+  labName           String?
+  labReference      String?
+  promisedDate      DateTime?
+  collectedAt       DateTime?
+  invoicedAt        DateTime? // when revenue was posted to the ledger
+  notes             String?
+  createdById       String?
+  createdAt         DateTime     @default(now())
+  items             OrderItem[]
+  receipts          Receipt[]
+  claims            MedicalAidClaim[]
+
+  @@unique([orgId, orderNo])
+  @@index([orgId, status])
+}
+
+model OrderItem {
+  id          String  @id @default(cuid())
+  orderId     String
+  order       Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  category    String // FRAME | LENS | CONTACT_LENS | CONSULTATION | REPAIR | ACCESSORY | OTHER
+  description String
+  eye         String? // OD | OS | OU
+  quantity    Float   @default(1)
+  unitPrice   Float
+  lineTotal   Float
+  unitCost    Float   @default(0) // base currency cost snapshot
+}
+
+model Receipt {
+  id           String       @id @default(cuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branchId     String
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  receiptNo    String
+  patientId    String?
+  patient      Patient?     @relation(fields: [patientId], references: [id])
+  orderId      String?
+  order        Order?       @relation(fields: [orderId], references: [id])
+  date         DateTime     @default(now())
+  amount       Float
+  currency     String
+  exchangeRate Float        @default(1)
+  baseAmount   Float
+  method       String // CASH | CARD | ECOCASH | ONEMONEY | INNBUCKS | BANK_TRANSFER | ZIPIT
+  reference    String?
+  notes        String?
+  voided       Boolean      @default(false)
+  createdById  String?
+  createdAt    DateTime     @default(now())
+
+  @@unique([orgId, receiptNo])
+}
+
+model MedicalAidClaim {
+  id           String       @id @default(cuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  claimNo      String
+  orderId      String
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  medicalAidId String
+  medicalAid   MedicalAid   @relation(fields: [medicalAidId], references: [id])
+  patientId    String
+  patient      Patient      @relation(fields: [patientId], references: [id])
+  memberNo     String?
+  amount       Float
+  currency     String
+  exchangeRate Float        @default(1)
+  status       String       @default("PENDING_AUTH") // PENDING_AUTH | AUTHORISED | SUBMITTED | PART_PAID | PAID | REJECTED
+  authNumber   String?
+  submittedAt  DateTime?
+  paidAmount   Float        @default(0)
+  paidAt       DateTime?
+  shortfall    Float        @default(0)
+  notes        String?
+  createdAt    DateTime     @default(now())
+
+  @@unique([orgId, claimNo])
+}
+
+// ─────────────────────────── Purchasing & costs ───────────────────────────
+
+model Purchase {
+  id           String         @id @default(cuid())
+  orgId        String
+  organization Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branchId     String
+  branch       Branch         @relation(fields: [branchId], references: [id])
+  purchaseNo   String
+  supplierId   String?
+  supplier     Supplier?      @relation(fields: [supplierId], references: [id])
+  supplierInvoiceNo String?
+  date         DateTime       @default(now())
+  currency     String
+  exchangeRate Float          @default(1)
+  total        Float
+  baseTotal    Float
+  paymentStatus String        @default("PAID") // PAID | UNPAID
+  paymentMethod String? // CASH | BANK_TRANSFER | ECOCASH ...
+  notes        String?
+  createdAt    DateTime       @default(now())
+  items        PurchaseItem[]
+
+  @@unique([orgId, purchaseNo])
+}
+
+model PurchaseItem {
+  id          String   @id @default(cuid())
+  purchaseId  String
+  purchase    Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product? @relation(fields: [productId], references: [id])
+  category    String // FRAME | LENS | CONTACT_LENS | ACCESSORY | CONSUMABLE
+  description String
+  quantity    Float
+  unitCost    Float
+  lineTotal   Float
+}
+
+model Expense {
+  id           String       @id @default(cuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branchId     String
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  expenseNo    String
+  date         DateTime     @default(now())
+  accountCode  String // expense account in chart of accounts
+  payee        String?
+  description  String
+  amount       Float
+  currency     String
+  exchangeRate Float        @default(1)
+  baseAmount   Float
+  method       String
+  reference    String?
+  createdAt    DateTime     @default(now())
+
+  @@unique([orgId, expenseNo])
+}
+
+model Asset {
+  id               String       @id @default(cuid())
+  orgId            String
+  organization     Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  branchId         String
+  branch           Branch       @relation(fields: [branchId], references: [id])
+  assetNo          String
+  name             String
+  category         String // EQUIPMENT | FURNITURE | VEHICLE | COMPUTER | BUILDING
+  serialNo         String?
+  supplier         String?
+  purchaseDate     DateTime
+  cost             Float
+  currency         String
+  exchangeRate     Float        @default(1)
+  baseCost         Float
+  usefulLifeYears  Float        @default(5)
+  residualValue    Float        @default(0) // base currency
+  paymentMethod    String
+  depreciatedTo    DateTime? // last month depreciation was posted
+  disposed         Boolean      @default(false)
+  createdAt        DateTime     @default(now())
+
+  @@unique([orgId, assetNo])
+}
+
+// ─────────────────────────── General ledger ───────────────────────────
+
+model Account {
+  id           String        @id @default(cuid())
+  orgId        String
+  organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  code         String
+  name         String
+  type         String // ASSET | LIABILITY | EQUITY | INCOME | EXPENSE
+  subtype      String? // CASH | BANK | MOBILE | RECEIVABLE | INVENTORY | FIXED | CONTRA | COGS | OPEX
+  system       Boolean       @default(false)
+  active       Boolean       @default(true)
+  lines        JournalLine[]
+
+  @@unique([orgId, code])
+}
+
+model JournalEntry {
+  id           String        @id @default(cuid())
+  orgId        String
+  organization Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  entryNo      String
+  date         DateTime
+  memo         String
+  source       String // ORDER | RECEIPT | CLAIM | PURCHASE | EXPENSE | ASSET | DEPRECIATION | MANUAL | STOCK
+  sourceId     String?
+  createdAt    DateTime      @default(now())
+  lines        JournalLine[]
+
+  @@unique([orgId, entryNo])
+  @@index([orgId, date])
+}
+
+model JournalLine {
+  id        String       @id @default(cuid())
+  entryId   String
+  entry     JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  accountId String
+  account   Account      @relation(fields: [accountId], references: [id])
+  branchId  String?
+  branch    Branch?      @relation(fields: [branchId], references: [id])
+  debit     Float        @default(0) // base currency
+  credit    Float        @default(0) // base currency
+  currency  String? // original transaction currency
+  fxAmount  Float? // original amount in transaction currency
+  memo      String?
+}
+
+// ─────────────────────────── Communication ───────────────────────────
+
+model MessageTemplate {
+  id           String       @id @default(cuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  key          String // RECALL | APPOINTMENT | ORDER_READY | FOLLOW_UP | BIRTHDAY
+  name         String
+  body         String
+
+  @@unique([orgId, key])
+}
+
+model Message {
+  id           String       @id @default(cuid())
+  orgId        String
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  patientId    String?
+  patient      Patient?     @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  channel      String // SMS | WHATSAPP
+  purpose      String // RECALL | APPOINTMENT | ORDER_READY | FOLLOW_UP | CUSTOM
+  to           String
+  body         String
+  status       String       @default("QUEUED") // QUEUED | SENT | DELIVERED | FAILED | LOGGED | LINK
+  provider     String?
+  providerRef  String?
+  error        String?
+  sentAt       DateTime?
+  createdAt    DateTime     @default(now())
+
+  @@index([orgId, createdAt])
+}
