@@ -3,7 +3,11 @@ import { redirect } from "next/navigation";
 import { requirePermission, requireWrite } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { postJournal } from "@/lib/ledger";
-import { accountBalances, balanceSheet, profitAndLoss } from "@/lib/reports";
+import { accountBalances } from "@/lib/reports";
+import { buildStatement, type StatementKind } from "@/lib/statements";
+import { StatementDownloads, StatementView } from "@/components/statement-view";
+import { DeleteButton } from "@/components/delete-button";
+import { can } from "@/lib/constants";
 import { Badge, Card, CardHeader, PageHeader, Table } from "@/components/ui";
 import { PrintButton } from "@/components/client";
 import { JournalForm } from "./journal-form";
@@ -24,20 +28,12 @@ async function postManual(fd: FormData) {
 const TABS = [
   { v: "pnl", l: "Profit & loss" },
   { v: "balance", l: "Balance sheet" },
+  { v: "cashflow", l: "Cash flow" },
   { v: "trial", l: "Trial balance" },
   { v: "journal", l: "Journal" },
   { v: "accounts", l: "Chart of accounts" },
   { v: "manual", l: "Manual journal" },
 ];
-
-function Row({ label, value, bold, indent, code }: { label: string; value: number; bold?: boolean; indent?: boolean; code?: string }) {
-  return (
-    <div className={cn("flex justify-between border-b border-slate-100 px-5 py-2 text-sm", bold && "bg-slate-50 font-bold", indent && "pl-9")}>
-      <span>{code ? <Link href={`/app/accounting/ledger/${code}`} className="hover:text-brand-700"><span className="text-slate-400">{code}</span> {label}</Link> : label}</span>
-      <span className={cn("tabular-nums", value < 0 && "text-rose-600")}>{money(value)}</span>
-    </div>
-  );
-}
 
 export default async function AccountingPage({ searchParams }: { searchParams: Promise<{ tab?: string; from?: string; to?: string }> }) {
   const sp = await searchParams;
@@ -65,10 +61,16 @@ export default async function AccountingPage({ searchParams }: { searchParams: P
         )}
       </div>
 
-      {tab === "pnl" && <PnL orgId={ctx.orgId} from={from} to={to} branchId={ctx.branchId} />}
-      {tab === "balance" && <BS orgId={ctx.orgId} to={to} branchId={ctx.branchId} />}
+      {STATEMENT_TABS[tab] && (
+        <Statement
+          kind={STATEMENT_TABS[tab]}
+          opts={{ orgId: ctx.orgId, from, to, branchId: ctx.branchId, branchLabel: branchLabel ?? "", currency: ctx.org.baseCurrency }}
+          downloadFrom={STATEMENT_TABS[tab] === "balance-sheet" ? undefined : isoDate(from)}
+          downloadTo={isoDate(to)}
+        />
+      )}
       {tab === "trial" && <Trial orgId={ctx.orgId} to={to} branchId={ctx.branchId} />}
-      {tab === "journal" && <Journal orgId={ctx.orgId} from={from} to={to} />}
+      {tab === "journal" && <Journal orgId={ctx.orgId} from={from} to={to} canDelete={can(ctx.user.role, "delete")} back={qs("journal")} />}
       {tab === "accounts" && <Accounts orgId={ctx.orgId} />}
       {tab === "manual" && (
         <Card>
@@ -82,48 +84,11 @@ export default async function AccountingPage({ searchParams }: { searchParams: P
   );
 }
 
-async function PnL({ orgId, from, to, branchId }: { orgId: string; from: Date; to: Date; branchId: string | null }) {
-  const p = await profitAndLoss(orgId, { from, to, branchId });
-  const margin = p.totalIncome ? Math.round((p.grossProfit / p.totalIncome) * 100) : 0;
-  return (
-    <Card className="print-area mx-auto max-w-3xl">
-      <CardHeader title="Income statement" subtitle={`${fmtDate(from)} – ${fmtDate(to)}`} />
-      <p className="px-5 pt-4 text-xs font-bold uppercase tracking-wider text-slate-400">Revenue</p>
-      {p.income.filter((r) => r.amount).map((r) => <Row key={r.code} code={r.code} label={r.name} value={r.amount} indent />)}
-      <Row label="Total revenue" value={p.totalIncome} bold />
-      <p className="px-5 pt-4 text-xs font-bold uppercase tracking-wider text-slate-400">Cost of sales</p>
-      {p.cogs.filter((r) => r.amount).map((r) => <Row key={r.code} code={r.code} label={r.name} value={r.amount} indent />)}
-      <Row label={`Gross profit (${margin}% margin)`} value={p.grossProfit} bold />
-      <p className="px-5 pt-4 text-xs font-bold uppercase tracking-wider text-slate-400">Operating expenses</p>
-      {p.opex.filter((r) => r.amount).map((r) => <Row key={r.code} code={r.code} label={r.name} value={r.amount} indent />)}
-      <Row label="Total operating expenses" value={p.totalOpex} bold />
-      <div className={cn("flex justify-between px-5 py-4 text-lg font-bold", p.netProfit >= 0 ? "text-emerald-700" : "text-rose-600")}>
-        <span>Net profit</span>
-        <span className="tabular-nums">{money(p.netProfit)}</span>
-      </div>
-    </Card>
-  );
-}
+const STATEMENT_TABS: Record<string, StatementKind> = { pnl: "income-statement", balance: "balance-sheet", cashflow: "cash-flow" };
 
-async function BS({ orgId, to, branchId }: { orgId: string; to: Date; branchId: string | null }) {
-  const b = await balanceSheet(orgId, to, branchId);
-  const diff = round2(b.totalAssets - b.totalLiabilities - b.totalEquity);
-  return (
-    <Card className="print-area mx-auto max-w-3xl">
-      <CardHeader title="Statement of financial position" subtitle={`As at ${fmtDate(to)}`} action={Math.abs(diff) < 0.01 ? <Badge tone="green">Balanced</Badge> : <Badge tone="red">Out by {money(diff)}</Badge>} />
-      <p className="px-5 pt-4 text-xs font-bold uppercase tracking-wider text-slate-400">Assets</p>
-      {b.assets.filter((r) => r.amount).map((r) => <Row key={r.code} code={r.code} label={r.name} value={r.amount} indent />)}
-      <Row label="Total assets" value={b.totalAssets} bold />
-      <p className="px-5 pt-4 text-xs font-bold uppercase tracking-wider text-slate-400">Liabilities</p>
-      {b.liabilities.filter((r) => r.amount).map((r) => <Row key={r.code} code={r.code} label={r.name} value={r.amount} indent />)}
-      <Row label="Total liabilities" value={b.totalLiabilities} bold />
-      <p className="px-5 pt-4 text-xs font-bold uppercase tracking-wider text-slate-400">Equity</p>
-      {b.equity.filter((r) => r.amount).map((r) => <Row key={r.code} code={r.code} label={r.name} value={r.amount} indent />)}
-      <Row label="Current & retained earnings" value={b.earnings} indent />
-      <Row label="Total equity" value={b.totalEquity} bold />
-      <Row label="Total liabilities & equity" value={round2(b.totalLiabilities + b.totalEquity)} bold />
-    </Card>
-  );
+async function Statement({ kind, opts, downloadFrom, downloadTo }: { kind: StatementKind; opts: Parameters<typeof buildStatement>[1]; downloadFrom?: string; downloadTo: string }) {
+  const statement = await buildStatement(kind, opts);
+  return <StatementView className="mx-auto max-w-4xl" statement={statement} action={<StatementDownloads kind={kind} from={downloadFrom} to={downloadTo} />} />;
 }
 
 async function Trial({ orgId, to, branchId }: { orgId: string; to: Date; branchId: string | null }) {
@@ -152,7 +117,7 @@ async function Trial({ orgId, to, branchId }: { orgId: string; to: Date; branchI
   );
 }
 
-async function Journal({ orgId, from, to }: { orgId: string; from: Date; to: Date }) {
+async function Journal({ orgId, from, to, canDelete, back }: { orgId: string; from: Date; to: Date; canDelete: boolean; back: string }) {
   const entries = await db.journalEntry.findMany({ where: { orgId, date: { gte: from, lte: to } }, include: { lines: { include: { account: true } } }, orderBy: [{ date: "desc" }, { entryNo: "desc" }], take: 150 });
   return (
     <Card>
@@ -165,6 +130,9 @@ async function Journal({ orgId, from, to }: { orgId: string; from: Date; to: Dat
               <span className="font-semibold">{fmtDate(e.date)}</span>
               <Badge>{e.source.toLowerCase().replace("_", " ")}</Badge>
               <span className="text-slate-600">{e.memo}</span>
+              {canDelete && e.source === "MANUAL" && (
+                <DeleteButton compact className="ml-auto" kind="journal" id={e.id} back={`/app/accounting${back}`} label="Delete" confirm={`Delete manual journal ${e.entryNo} (${e.memo})? This cannot be undone.`} />
+              )}
             </div>
             <table className="w-full text-xs">
               <tbody>

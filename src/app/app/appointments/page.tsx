@@ -4,7 +4,8 @@ import { getContext, branchScope } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge, Card, LinkButton, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
-import { APPOINTMENT_STATUSES, APPOINTMENT_TYPES, labelOf, toneOf } from "@/lib/constants";
+import { APPOINTMENT_STATUSES, APPOINTMENT_TYPES, can, labelOf, toneOf } from "@/lib/constants";
+import { DeleteButton } from "@/components/delete-button";
 import { addDays, cn, fmtTime, fullName, isoDate, startOfDay } from "@/lib/utils";
 import { sendAppointmentReminder, setAppointmentStatus } from "./actions";
 
@@ -85,6 +86,7 @@ export default async function AppointmentsPage({ searchParams }: { searchParams:
                   <SubmitButton variant="ghost" className="px-2 py-1 text-xs" title="Send SMS reminder"><Send size={13} /> {a.reminderSent ? "Resend" : "Remind"}</SubmitButton>
                 </form>
               )}
+              {can(ctx.user.role, "delete") && <DeleteButton compact kind="appointment" id={a.id} back={`/app/appointments?date=${isoDate(day)}`} label="" confirm="Delete this appointment? This cannot be undone. To keep a record, mark it Cancelled instead." />}
             </li>
           ))}
           {!selected.length && <li className="px-5 py-16 text-center text-slate-400">No appointments on this day.</li>}

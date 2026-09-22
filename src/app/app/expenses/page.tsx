@@ -5,7 +5,8 @@ import { recordExpense } from "@/lib/services";
 import { Card, CardHeader, Field, Input, PageHeader, Select, StatCard, Table } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { BarsChart } from "@/components/charts";
-import { PAYMENT_METHODS, labelOf } from "@/lib/constants";
+import { PAYMENT_METHODS, can, labelOf } from "@/lib/constants";
+import { DeleteButton } from "@/components/delete-button";
 import { endOfDay, fmtDate, isoDate, money, num, optDate, optStr, round2, startOfMonth, str } from "@/lib/utils";
 
 export const metadata = { title: "Expenses" };
@@ -45,6 +46,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
     db.account.findMany({ where: { orgId: ctx.orgId, type: "EXPENSE", active: true, subtype: { in: ["OPEX", "COGS"] } }, orderBy: { code: "asc" } }),
     db.currency.findMany({ where: { orgId: ctx.orgId, active: true }, orderBy: { isBase: "desc" } }),
   ]);
+  const canDelete = can(ctx.user.role, "delete");
   const acctName = new Map(accounts.map((a) => [a.code, a.name]));
   const total = round2(expenses.reduce((s, e) => s + e.baseAmount, 0));
   const byAcct = [...expenses.reduce((m, e) => m.set(e.accountCode, (m.get(e.accountCode) ?? 0) + e.baseAmount), new Map<string, number>())]
@@ -74,7 +76,7 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
           )}
           <Card>
             <Table>
-              <thead><tr><th>Ref</th><th>Date</th><th>Category</th><th>Description</th><th>Paid via</th>{!ctx.branchId && <th>Branch</th>}<th className="num">Amount</th></tr></thead>
+              <thead><tr><th>Ref</th><th>Date</th><th>Category</th><th>Description</th><th>Paid via</th>{!ctx.branchId && <th>Branch</th>}<th className="num">Amount</th>{canDelete && <th />}</tr></thead>
               <tbody>
                 {expenses.map((e) => (
                   <tr key={e.id}>
@@ -85,9 +87,10 @@ export default async function ExpensesPage({ searchParams }: { searchParams: Pro
                     <td className="text-sm">{e.method === "CREDIT" ? "On account" : labelOf(PAYMENT_METHODS, e.method)}</td>
                     {!ctx.branchId && <td className="text-slate-500">{e.branch.name}</td>}
                     <td className="num font-semibold">{money(e.amount, e.currency)}</td>
+                    {canDelete && <td className="text-right"><DeleteButton compact kind="expense" id={e.id} back="/app/expenses" label="" confirm={`Delete ${e.expenseNo} (${e.description})? It is removed from your books. This cannot be undone.`} /></td>}
                   </tr>
                 ))}
-                {!expenses.length && <tr><td colSpan={7} className="py-10 text-center text-slate-400">No expenses in this period.</td></tr>}
+                {!expenses.length && <tr><td colSpan={8} className="py-10 text-center text-slate-400">No expenses in this period.</td></tr>}
               </tbody>
             </Table>
           </Card>

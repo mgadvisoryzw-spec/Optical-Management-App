@@ -7,6 +7,8 @@ import { PERMISSIONS, ROLE_LABELS, can } from "@/lib/constants";
 import { Sidebar } from "./sidebar";
 import { logoutAction } from "../(auth)/actions";
 import { AutoSubmitSelect } from "@/components/client";
+import { Flash } from "@/components/flash";
+import { Suspense } from "react";
 
 async function switchBranch(fd: FormData) {
   "use server";
@@ -72,6 +74,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6">{children}</main>
+        <Suspense fallback={null}>
+          <Flash />
+        </Suspense>
       </div>
     </div>
   );

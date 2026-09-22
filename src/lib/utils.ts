@@ -129,3 +129,11 @@ export function toE164(phone: string | null | undefined, defaultCc = "263") {
   if (p.startsWith(defaultCc)) return "+" + p;
   return "+" + defaultCc + p;
 }
+
+/** A date picked in a form: today's date keeps the current time; other days are set to midday local time. */
+export function formDate(v: FormDataEntryValue | null | undefined): Date {
+  const s = str(v);
+  if (!s || s === isoDate(new Date())) return new Date();
+  const d = new Date(`${s}T12:00:00`);
+  return isNaN(d.getTime()) ? new Date() : d;
+}

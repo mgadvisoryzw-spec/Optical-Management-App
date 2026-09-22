@@ -13,6 +13,7 @@ import {
   Receipt,
   HeartPulse,
   Boxes,
+  Scale,
   Truck,
   Factory,
   Wallet,
@@ -52,6 +53,7 @@ const groups: { title: string; items: Item[] }[] = [
     title: "Stock",
     items: [
       { href: "/app/inventory", label: "Inventory", icon: Boxes, perm: "inventory" },
+      { href: "/app/inventory/valuation", label: "Stock valuation", icon: Scale, perm: "inventory" },
       { href: "/app/purchases", label: "Purchases", icon: Truck, perm: "inventory" },
       { href: "/app/suppliers", label: "Suppliers & labs", icon: Factory, perm: "inventory" },
     ],
@@ -88,7 +90,7 @@ export function Sidebar({ allowed, orgName }: { allowed: string[]; orgName: stri
             {g.title && <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{g.title}</p>}
             <ul className="space-y-0.5">
               {items.map((i) => {
-                const active = i.href === "/app" ? path === "/app" : path.startsWith(i.href);
+                const active = i.href === "/app" ? path === "/app" : i.href === "/app/inventory" ? path.startsWith(i.href) && !path.startsWith("/app/inventory/valuation") : path.startsWith(i.href);
                 return (
                   <li key={i.href}>
                     <Link

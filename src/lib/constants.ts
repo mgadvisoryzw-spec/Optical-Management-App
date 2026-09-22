@@ -18,6 +18,8 @@ export const PERMISSIONS = {
   accounting: ["OWNER", "ADMIN", "ACCOUNTANT"],
   settings: ["OWNER", "ADMIN"],
   billing: ["OWNER"],
+  /** Permanently deleting records (receipts, orders, claims, expenses…). */
+  delete: ["OWNER", "ADMIN"],
 } as const;
 export type Permission = keyof typeof PERMISSIONS;
 

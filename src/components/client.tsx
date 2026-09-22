@@ -26,7 +26,7 @@ export function SubmitButton({ children, variant = "primary", className, pending
   );
 }
 
-export function ConfirmButton({ children, message, className, variant = "secondary" }: { children: ReactNode; message: string; className?: string; variant?: "secondary" | "danger" | "ghost" }) {
+export function ConfirmButton({ children, message, className, variant = "secondary" }: { children: ReactNode; message: string; className?: string; variant?: "primary" | "secondary" | "danger" | "ghost" }) {
   return (
     <SubmitButton
       variant={variant}

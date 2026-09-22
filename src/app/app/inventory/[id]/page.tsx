@@ -6,6 +6,8 @@ import { SubmitButton } from "@/components/client";
 import { ProductForm } from "../product-form";
 import { adjustStockAction, transferStockAction, updateProduct } from "../actions";
 import { fmtDateTime, money } from "@/lib/utils";
+import { can } from "@/lib/constants";
+import { DeleteButton } from "@/components/delete-button";
 
 export default async function ProductPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -21,7 +23,12 @@ export default async function ProductPage({ params }: { params: Promise<{ id: st
 
   return (
     <>
-      <PageHeader title={p.name} subtitle={`${p.sku} · ${total} on hand across all branches`} back={{ href: "/app/inventory", label: "Inventory" }} />
+      <PageHeader
+        title={p.name}
+        subtitle={`${p.sku} · ${total} on hand across all branches`}
+        back={{ href: "/app/inventory", label: "Inventory" }}
+        actions={can(ctx.user.role, "delete") && <DeleteButton kind="product" id={p.id} back={`/app/inventory/${p.id}`} confirm={`Permanently delete ${p.name}? Only items that have never been bought or sold can be deleted. This cannot be undone.`} />}
+      />
       {p.trackStock && (
         <div className="mb-6 grid gap-6 xl:grid-cols-3">
           <Card>

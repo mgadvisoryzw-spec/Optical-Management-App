@@ -6,7 +6,10 @@ import { db } from "@/lib/db";
 import { Alert, Badge, Card, CardHeader, Field, Input, LinkButton, PageHeader, Select, Table } from "@/components/ui";
 import { ConfirmButton, SubmitButton } from "@/components/client";
 import { RxTable } from "@/components/rx-table";
-import { CLAIM_STATUSES, ORDER_STATUSES, PAYMENT_METHODS, SALE_CATEGORIES, labelOf, toneOf } from "@/lib/constants";
+import { CLAIM_STATUSES, ORDER_STATUSES, PAYMENT_METHODS, SALE_CATEGORIES, can, labelOf, toneOf } from "@/lib/constants";
+import { DeleteButton } from "@/components/delete-button";
+import { orderCredit } from "@/lib/deletion";
+import { refundAction } from "../../record-actions";
 import { cn, fmtDate, fullName, money } from "@/lib/utils";
 import { addOrderPayment, setOrderStatus } from "../actions";
 
@@ -30,6 +33,8 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
   if (!o) notFound();
   const currencies = await db.currency.findMany({ where: { orgId: ctx.orgId, active: true } });
   const balance = o.patientPortion - o.amountPaid;
+  const credit = orderCredit(o);
+  const canDelete = can(ctx.user.role, "delete");
   const step = PIPELINE.indexOf(o.status);
   const claim = o.claims[0];
 
@@ -50,6 +55,14 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
             {o.status !== "CANCELLED" && <LinkButton href={`/app/orders/${o.id}/edit`}><Pencil size={15} /> Edit order</LinkButton>}
             <LinkButton variant="secondary" href={`/app/orders/${o.id}/print?doc=invoice`}><FileText size={15} /> {o.status === "QUOTE" ? "Quotation" : "Invoice"}</LinkButton>
             <LinkButton variant="secondary" href={`/app/orders/${o.id}/print?doc=job`}><FileText size={15} /> Job card</LinkButton>
+            {canDelete && (
+              <DeleteButton
+                kind="order"
+                id={o.id}
+                back={`/app/orders/${o.id}`}
+                confirm={`Permanently delete ${o.orderNo}? Its ${o.receipts.length} receipt(s)${o.claims.length ? ` and medical aid claim` : ""} are deleted too, the entries are removed from your books and any stock is returned. This cannot be undone. To keep a record, use Cancel order instead.`}
+              />
+            )}
           </>
         }
       />
@@ -129,7 +142,11 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
               {o.medicalAidPortion > 0 && <div className="flex justify-between text-slate-500"><dt>{o.medicalAid?.name} portion</dt><dd>{money(o.medicalAidPortion, o.currency)}</dd></div>}
               <div className="flex justify-between"><dt className="text-slate-500">Patient portion</dt><dd>{money(o.patientPortion, o.currency)}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Paid</dt><dd>{money(o.amountPaid, o.currency)}</dd></div>
-              <div className={cn("flex justify-between text-base font-bold", balance > 0.009 ? "text-amber-600" : "text-emerald-600")}><dt>Balance due</dt><dd>{money(balance, o.currency)}</dd></div>
+              {credit > 0.009 ? (
+                <div className="flex justify-between text-base font-bold text-violet-700"><dt>Owed to patient</dt><dd>{money(credit, o.currency)}</dd></div>
+              ) : (
+                <div className={cn("flex justify-between text-base font-bold", balance > 0.009 ? "text-amber-600" : "text-emerald-600")}><dt>Balance due</dt><dd>{money(o.status === "CANCELLED" ? 0 : balance, o.currency)}</dd></div>
+              )}
             </dl>
           </Card>
 
@@ -141,17 +158,17 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
           )}
 
           <Card>
-            <CardHeader title="Payments" />
+            <CardHeader title="Payments & refunds" />
             <Table>
               <thead><tr><th>Receipt</th><th>Date</th><th>Method</th><th>Reference</th><th className="num">Amount</th></tr></thead>
               <tbody>
                 {o.receipts.map((r) => (
                   <tr key={r.id} className={r.voided ? "opacity-50 line-through" : ""}>
-                    <td><Link href={`/app/receipts/${r.id}`} className="font-semibold text-brand-700">{r.receiptNo}</Link></td>
+                    <td><Link href={`/app/receipts/${r.id}`} className="font-semibold text-brand-700">{r.receiptNo}</Link> {r.kind === "REFUND" && <Badge tone="violet">Refund</Badge>}</td>
                     <td>{fmtDate(r.date)}</td>
                     <td>{labelOf(PAYMENT_METHODS, r.method)}</td>
                     <td className="text-slate-500">{r.reference ?? "—"}</td>
-                    <td className="num">{money(r.amount, r.currency)}</td>
+                    <td className={cn("num", r.kind === "REFUND" && "text-violet-700")}>{money(r.kind === "REFUND" ? -r.amount : r.amount, r.currency)}</td>
                   </tr>
                 ))}
                 {!o.receipts.length && <tr><td colSpan={5} className="py-6 text-center text-slate-400">No payments yet.</td></tr>}
@@ -161,6 +178,18 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
         </div>
 
         <div className="space-y-6">
+          {credit > 0.009 && (
+            <Card className="border-violet-200">
+              <CardHeader title="Refund the patient" subtitle={`The patient has paid ${money(credit, o.currency)} more than they owe${o.status === "CANCELLED" ? " on this cancelled order" : ""}`} />
+              <form action={refundAction.bind(null, o.id)} className="space-y-3 p-5">
+                <Field label={`Amount to refund (${o.currency})`}><Input name="amount" type="number" step="0.01" min="0.01" max={credit.toFixed(2)} defaultValue={credit.toFixed(2)} required /></Field>
+                <Field label="Paid back via"><Select name="method" defaultValue="CASH" options={PAYMENT_METHODS} /></Field>
+                <Field label="Reference"><Input name="reference" placeholder="EcoCash ref, cheque no…" /></Field>
+                <Field label="Reason"><Input name="notes" placeholder="e.g. Price corrected, order cancelled" /></Field>
+                <ConfirmButton message="Record this refund? The money is shown as paid out of the account you selected." variant="primary" className="w-full">Record refund</ConfirmButton>
+              </form>
+            </Card>
+          )}
           {o.status !== "CANCELLED" && balance > 0.009 && (
             <Card>
               <CardHeader title="Take a payment" subtitle={`Balance ${money(balance, o.currency)}`} />

@@ -3,7 +3,8 @@ import { getContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge, Card, CardHeader, PageHeader, Select, Table } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
-import { PAYMENT_METHODS, PRODUCT_CATEGORIES, labelOf } from "@/lib/constants";
+import { PAYMENT_METHODS, PRODUCT_CATEGORIES, can, labelOf } from "@/lib/constants";
+import { DeleteButton } from "@/components/delete-button";
 import { fmtDate, money } from "@/lib/utils";
 import { paySupplier } from "../actions";
 
@@ -18,6 +19,11 @@ export default async function PurchasePage({ params }: { params: Promise<{ id: s
         title={<span className="flex items-center gap-3">{p.purchaseNo} <Badge tone={p.paymentStatus === "PAID" ? "green" : "amber"}>{p.paymentStatus === "PAID" ? "Paid" : "Unpaid"}</Badge></span>}
         subtitle={`${p.supplier?.name ?? "No supplier"} · ${fmtDate(p.date)} · ${p.branch.name}${p.supplierInvoiceNo ? ` · inv ${p.supplierInvoiceNo}` : ""}`}
         back={{ href: "/app/purchases", label: "Purchases" }}
+        actions={
+          can(ctx.user.role, "delete") && (
+            <DeleteButton kind="purchase" id={p.id} back={`/app/purchases/${p.id}`} confirm={`Permanently delete ${p.purchaseNo}? Stock received on it is taken back out and the entries are removed from your books. This cannot be undone.`} />
+          )
+        }
       />
       <div className="grid gap-6 xl:grid-cols-3">
         <Card className="xl:col-span-2">

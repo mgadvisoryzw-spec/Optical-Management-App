@@ -6,8 +6,9 @@ import { db } from "@/lib/db";
 import { requireWrite } from "@/lib/auth";
 import { cancelOrder, recordCashSale, recordReceipt, voidReceipt, type OrderLineInput } from "@/lib/services";
 import { nextNumber } from "@/lib/ledger";
+import { voidRefund } from "@/lib/deletion";
 import { SALE_CATEGORIES } from "@/lib/constants";
-import { num, optDate, optStr, round2, str } from "@/lib/utils";
+import { formDate, num, optStr, round2, str } from "@/lib/utils";
 
 export async function createReceipt(fd: FormData) {
   const ctx = await requireWrite("sales");
@@ -31,7 +32,7 @@ export async function createReceipt(fd: FormData) {
       method: str(fd.get("method")) || "CASH",
       reference: optStr(fd.get("reference")),
       notes: optStr(fd.get("notes")),
-      date: optDate(fd.get("date")) ?? new Date(),
+      date: formDate(fd.get("date")),
       userId: ctx.user.id,
     }),
   );
@@ -77,7 +78,7 @@ export async function createCashSale(_: CashSaleState, fd: FormData): Promise<Ca
       method: str(fd.get("method")) || "CASH",
       reference: optStr(fd.get("reference")),
       notes: optStr(fd.get("notes")),
-      date: optDate(fd.get("date")) ?? new Date(),
+      date: formDate(fd.get("date")),
       userId: ctx.user.id,
     });
   });
@@ -88,6 +89,10 @@ export async function voidReceiptAction(id: string) {
   const ctx = await requireWrite("accounting");
   const r = await db.receipt.findFirstOrThrow({ where: { id, orgId: ctx.orgId }, include: { order: true } });
   await db.$transaction(async (tx) => {
+    if (r.kind === "REFUND") {
+      await voidRefund(tx, id);
+      return;
+    }
     await voidReceipt(tx, id);
     // Voiding a cash sale also reverses the sale itself and returns the items to stock
     if (r.order?.isCashSale && r.order.status !== "CANCELLED") await cancelOrder(tx, r.order.id);

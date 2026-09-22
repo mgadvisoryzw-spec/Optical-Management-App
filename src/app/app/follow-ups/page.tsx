@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import { Badge, Card, EmptyState, PageHeader, Table } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
 import { cn, fmtDate, fullName, optStr, str } from "@/lib/utils";
+import { can } from "@/lib/constants";
+import { DeleteButton } from "@/components/delete-button";
 
 export const metadata = { title: "Follow-ups" };
 
@@ -47,12 +49,16 @@ export default async function FollowUpsPage({ searchParams }: { searchParams: Pr
                   <td className="text-slate-500">{f.assignedTo?.name ?? "—"}</td>
                   <td>
                     {showDone ? (
-                      <span className="text-sm text-slate-600">{f.outcome ?? f.status}</span>
+                      <span className="flex items-center justify-between gap-2 text-sm text-slate-600">
+                        {f.outcome ?? f.status}
+                        {can(ctx.user.role, "delete") && <DeleteButton compact kind="followUp" id={f.id} back="/app/follow-ups?show=done" label="" confirm="Delete this follow-up? This cannot be undone." />}
+                      </span>
                     ) : (
                       <form action={completeFollowUp.bind(null, f.id)} className="flex gap-2">
                         <input name="outcome" placeholder="Outcome / notes" className="input py-1.5" />
                         <SubmitButton name="status" value="DONE" className="px-3 py-1.5 text-xs">Done</SubmitButton>
                         <SubmitButton name="status" value="CANCELLED" variant="ghost" className="px-2 py-1.5 text-xs">Skip</SubmitButton>
+                        {can(ctx.user.role, "delete") && <DeleteButton compact kind="followUp" id={f.id} back="/app/follow-ups" label="" confirm="Delete this follow-up? This cannot be undone." />}
                       </form>
                     )}
                   </td>

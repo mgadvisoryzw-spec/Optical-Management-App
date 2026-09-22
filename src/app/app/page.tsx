@@ -22,7 +22,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const [trend, monthRows, receiptsToday, openOrders, readyOrders, recallsDue, apptsToday, claimsOpen, lowStock, patientsCount] = await Promise.all([
     monthlyRevenue(orgId, 12, ctx.branchId),
     accountBalances(orgId, { from: startOfMonth(), branchId: ctx.branchId }),
-    db.receipt.aggregate({ where: { orgId, ...scope, voided: false, date: { gte: today0, lte: today1 } }, _sum: { baseAmount: true }, _count: true }),
+    db.receipt.aggregate({ where: { orgId, ...scope, voided: false, kind: "PAYMENT", date: { gte: today0, lte: today1 } }, _sum: { baseAmount: true }, _count: true }),
     db.order.count({ where: { orgId, ...scope, status: { in: ["AWAITING_AUTH", "ORDERED", "IN_LAB", "READY"] } } }),
     db.order.findMany({ where: { orgId, ...scope, status: "READY" }, include: { patient: true }, orderBy: { createdAt: "desc" }, take: 6 }),
     db.patient.count({ where: { orgId, nextRecallDate: { lte: addDays(new Date(), ctx.org.recallLeadDays) } } }),

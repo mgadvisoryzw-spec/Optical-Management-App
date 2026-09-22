@@ -31,6 +31,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
         subtitle={ctx.branchId ? `Stock at ${ctx.branches.find((b) => b.id === ctx.branchId)?.name}` : "Stock across all branches"}
         actions={
           <>
+            <LinkButton variant="secondary" href="/app/inventory/valuation">Stock valuation</LinkButton>
             <LinkButton variant="secondary" href="/app/purchases/new">Receive stock</LinkButton>
             <LinkButton href={`/app/inventory/new${sp.cat ? `?category=${sp.cat}` : ""}`}><Plus size={16} /> Add item</LinkButton>
           </>

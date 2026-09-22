@@ -1,4 +1,7 @@
+import Link from "next/link";
 import { Download } from "lucide-react";
+import { StatementDownloads } from "@/components/statement-view";
+import { STATEMENT_TITLES } from "@/lib/statements";
 import { requirePermission } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card, CardHeader, PageHeader, StatCard, Table } from "@/components/ui";
@@ -52,8 +55,9 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
     }
   }
   const toArr = (m: Map<string, number>) => [...m].map(([name, value]) => ({ name, value: round2(value) })).sort((a, b) => b.value - a.value);
-  const methods = PAYMENT_METHODS.map((m) => ({ name: m.label, value: round2(receipts.filter((r) => r.method === m.value).reduce((s, r) => s + r.baseAmount, 0)) })).filter((x) => x.value);
-  const cashIn = round2(receipts.reduce((s, r) => s + r.baseAmount, 0));
+  const signed = (r: { kind: string; baseAmount: number }) => (r.kind === "REFUND" ? -r.baseAmount : r.baseAmount);
+  const methods = PAYMENT_METHODS.map((m) => ({ name: m.label, value: round2(receipts.filter((r) => r.method === m.value).reduce((s, r) => s + signed(r), 0)) })).filter((x) => x.value > 0);
+  const cashIn = round2(receipts.reduce((s, r) => s + signed(r), 0));
   const recalledIds = [...new Set(recalled.map((r) => r.patientId).filter(Boolean))] as string[];
   const returned = recalledIds.length
     ? await db.prescription.groupBy({ by: ["patientId"], where: { patientId: { in: recalledIds }, examDate: { gte: from } } }).then((r) => r.length)
@@ -126,6 +130,19 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           </Table>
         </Card>
       </div>
+      <Card className="mt-6">
+        <CardHeader title="Financial statements" subtitle={`For ${fmtDate(from)} – ${fmtDate(to)} (balance sheet and inventory as at ${fmtDate(to)})`} />
+        <div className="divide-y divide-slate-100">
+          {(["income-statement", "balance-sheet", "cash-flow", "inventory-valuation"] as const).map((k) => (
+            <div key={k} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+              <Link href={k === "inventory-valuation" ? `/app/inventory/valuation?to=${isoDate(to)}` : `/app/accounting?tab=${k === "income-statement" ? "pnl" : k === "balance-sheet" ? "balance" : "cashflow"}&from=${isoDate(from)}&to=${isoDate(to)}`} className="font-semibold text-slate-800 hover:text-brand-700">
+                {STATEMENT_TITLES[k]}
+              </Link>
+              <StatementDownloads kind={k} from={isoDate(from)} to={isoDate(to)} />
+            </div>
+          ))}
+        </div>
+      </Card>
       <Card className="mt-6">
         <CardHeader title="Data export" subtitle="Download CSV files for Excel, your auditor or a migration" />
         <div className="flex flex-wrap gap-2 p-5">

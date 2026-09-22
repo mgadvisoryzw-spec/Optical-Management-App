@@ -6,6 +6,7 @@ import { Alert, LinkButton } from "@/components/ui";
 import { PAYMENT_METHODS, SALE_CATEGORIES, can, labelOf } from "@/lib/constants";
 import { fmtDateTime, fullName, money } from "@/lib/utils";
 import { voidReceiptAction } from "../actions";
+import { DeleteButton } from "@/components/delete-button";
 
 export default async function ReceiptPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,8 +20,20 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
         <div className="flex gap-2">
           {!r.voided && can(ctx.user.role, "accounting") && (
             <form action={voidReceiptAction.bind(null, r.id)}>
-              <ConfirmButton message="Void this receipt? This reverses the entry in the ledger." variant="ghost">Void</ConfirmButton>
+              <ConfirmButton message={`Void this ${r.kind === "REFUND" ? "refund" : "receipt"}? It stays on file marked void and the entry is reversed in the ledger.`} variant="ghost">Void</ConfirmButton>
             </form>
+          )}
+          {can(ctx.user.role, "delete") && (
+            <DeleteButton
+              kind="receipt"
+              id={r.id}
+              back={`/app/receipts/${r.id}`}
+              confirm={
+                r.order?.isCashSale && r.kind === "PAYMENT"
+                  ? `Permanently delete ${r.receiptNo}? The cash sale ${r.order.orderNo} is deleted with it and the items go back into stock. This cannot be undone.`
+                  : `Permanently delete ${r.receiptNo}? It is removed from your books${r.order ? ` and the balance on ${r.order.orderNo} is updated` : ""}. This cannot be undone.`
+              }
+            />
           )}
           <PrintButton />
         </div>
@@ -30,17 +43,17 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
         <div className="text-center">
           <h1 className="text-lg font-bold">{ctx.org.name}</h1>
           <p className="text-slate-500">{r.branch.name}{r.branch.phone ? ` · ${r.branch.phone}` : ""}</p>
-          <p className="mt-4 text-xs font-bold uppercase tracking-widest text-brand-700">Payment receipt</p>
+          <p className={`mt-4 text-xs font-bold uppercase tracking-widest ${r.kind === "REFUND" ? "text-violet-700" : "text-brand-700"}`}>{r.kind === "REFUND" ? "Refund voucher" : "Payment receipt"}</p>
           <p className="text-2xl font-bold">{r.receiptNo}</p>
         </div>
         <dl className="mt-6 space-y-2 border-y border-dashed border-slate-300 py-4">
           <div className="flex justify-between"><dt className="text-slate-500">Date</dt><dd>{fmtDateTime(r.date)}</dd></div>
-          <div className="flex justify-between"><dt className="text-slate-500">Received from</dt><dd>{r.patient ? fullName(r.patient) : "—"}</dd></div>
+          <div className="flex justify-between"><dt className="text-slate-500">{r.kind === "REFUND" ? "Paid to" : "Received from"}</dt><dd>{r.patient ? fullName(r.patient) : "—"}</dd></div>
           {r.order && <div className="flex justify-between"><dt className="text-slate-500">{r.order.isCashSale ? "Sale no." : "For order"}</dt><dd>{r.order.orderNo}</dd></div>}
           <div className="flex justify-between"><dt className="text-slate-500">Method</dt><dd>{labelOf(PAYMENT_METHODS, r.method)}</dd></div>
           {r.reference && <div className="flex justify-between"><dt className="text-slate-500">Reference</dt><dd>{r.reference}</dd></div>}
         </dl>
-        {r.order && (
+        {r.order && r.kind === "PAYMENT" && (
           <div className="border-b border-dashed border-slate-300 py-4">
             <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Paid for</p>
             <table className="w-full">
@@ -62,11 +75,20 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
           </div>
         )}
         <div className="flex items-baseline justify-between py-4">
-          <span className="font-semibold">Amount paid</span>
+          <span className="font-semibold">{r.kind === "REFUND" ? "Amount refunded" : "Amount paid"}</span>
           <span className="text-2xl font-bold">{money(r.amount, r.currency)}</span>
         </div>
         {r.order && !r.order.isCashSale && <p className="text-right text-slate-500">Balance remaining on order: {money(r.order.patientPortion - r.order.amountPaid, r.order.currency)}</p>}
-        <p className="mt-8 text-center text-xs text-slate-400">Thank you!</p>
+        {r.kind === "REFUND" && (
+          <>
+            {r.notes && <p className="text-sm text-slate-600">Reason: {r.notes}</p>}
+            <div className="mt-10 grid grid-cols-2 gap-6 text-xs text-slate-500">
+              <div className="border-t border-slate-300 pt-1">Refunded by</div>
+              <div className="border-t border-slate-300 pt-1">Received by (patient signature)</div>
+            </div>
+          </>
+        )}
+        <p className="mt-8 text-center text-xs text-slate-400">{r.kind === "REFUND" ? "Please keep this voucher as proof of refund." : "Thank you!"}</p>
       </div>
     </div>
   );

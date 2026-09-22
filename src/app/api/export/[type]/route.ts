@@ -33,8 +33,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ type
       ...os.map((o) => [o.orderNo, isoDate(o.createdAt), o.branch.name, `${o.patient.firstName} ${o.patient.lastName}`, o.status, o.currency, o.exchangeRate, o.subtotal, o.discount, o.tax, o.total, o.medicalAid?.name, o.medicalAidPortion, o.patientPortion, o.amountPaid])];
   } else if (type === "receipts") {
     const rs = await db.receipt.findMany({ where: { orgId, date: { gte: from, lte: to } }, include: { patient: true, branch: true, order: true }, orderBy: { date: "asc" } });
-    rows = [["Receipt no", "Date", "Branch", "Patient", "Order", "Method", "Reference", "Currency", "Amount", "Rate", "Base amount", "Voided"],
-      ...rs.map((r) => [r.receiptNo, isoDate(r.date), r.branch.name, r.patient ? `${r.patient.firstName} ${r.patient.lastName}` : "", r.order?.orderNo, r.method, r.reference, r.currency, r.amount, r.exchangeRate, r.baseAmount, r.voided ? "Yes" : ""])];
+    rows = [["Receipt no", "Type", "Date", "Branch", "Patient", "Order", "Method", "Reference", "Currency", "Amount", "Rate", "Base amount", "Voided"],
+      ...rs.map((r) => [r.receiptNo, r.kind === "REFUND" ? "Refund" : "Payment", isoDate(r.date), r.branch.name, r.patient ? `${r.patient.firstName} ${r.patient.lastName}` : "", r.order?.orderNo, r.method, r.reference, r.currency, r.kind === "REFUND" ? -r.amount : r.amount, r.exchangeRate, r.kind === "REFUND" ? -r.baseAmount : r.baseAmount, r.voided ? "Yes" : ""])];
   } else if (type === "expenses") {
     const es = await db.expense.findMany({ where: { orgId, date: { gte: from, lte: to } }, include: { branch: true }, orderBy: { date: "asc" } });
     rows = [["Ref", "Date", "Branch", "Account", "Payee", "Description", "Method", "Currency", "Amount", "Rate", "Base amount"],

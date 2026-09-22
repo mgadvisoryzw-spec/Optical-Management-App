@@ -4,7 +4,8 @@ import { getContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Alert, Badge, Card, CardHeader, Field, Input, LinkButton, PageHeader, Select, Textarea } from "@/components/ui";
 import { ConfirmButton, SubmitButton } from "@/components/client";
-import { CLAIM_STATUSES, PAYMENT_METHODS, labelOf, toneOf } from "@/lib/constants";
+import { CLAIM_STATUSES, PAYMENT_METHODS, can, labelOf, toneOf } from "@/lib/constants";
+import { DeleteButton } from "@/components/delete-button";
 import { fmtDate, fullName, isoDate, money } from "@/lib/utils";
 import { authoriseClaim, claimPayment, rejectClaim, submitClaim, updateClaim } from "../actions";
 
@@ -23,7 +24,19 @@ export default async function ClaimPage({ params, searchParams }: { params: Prom
         title={<span className="flex items-center gap-3">{c.claimNo} <Badge tone={toneOf(CLAIM_STATUSES, c.status)}>{labelOf(CLAIM_STATUSES, c.status)}</Badge></span>}
         subtitle={`${c.medicalAid.name} · ${fullName(c.patient)} · member ${c.memberNo ?? "—"}`}
         back={{ href: "/app/medical-aid", label: "Claims" }}
-        actions={<LinkButton variant="secondary" href={`/app/orders/${c.orderId}/edit`}>Edit order items</LinkButton>}
+        actions={
+          <>
+            <LinkButton variant="secondary" href={`/app/orders/${c.orderId}/edit`}>Edit order items</LinkButton>
+            {can(ctx.user.role, "delete") && (
+              <DeleteButton
+                kind="claim"
+                id={c.id}
+                back={`/app/medical-aid/${c.id}`}
+                confirm={`Permanently delete ${c.claimNo}? The whole of ${c.order.orderNo} becomes the patient's responsibility${c.paidAmount > 0 ? ", and the medical aid payments on this claim are removed from your books" : ""}. This cannot be undone.`}
+              />
+            )}
+          </>
+        }
       />
       {sp.saved && <div className="mb-4"><Alert tone="green">Claim updated.</Alert></div>}
       {sp.error && <div className="mb-4"><Alert tone="red">{sp.error}</Alert></div>}

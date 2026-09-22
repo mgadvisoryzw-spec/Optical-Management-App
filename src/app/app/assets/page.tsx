@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { recordAsset, runDepreciation } from "@/lib/services";
 import { Alert, Card, CardHeader, Field, Input, PageHeader, Select, StatCard, Table } from "@/components/ui";
 import { SubmitButton } from "@/components/client";
-import { ASSET_CATEGORIES, PAYMENT_METHODS, labelOf } from "@/lib/constants";
+import { ASSET_CATEGORIES, PAYMENT_METHODS, can, labelOf } from "@/lib/constants";
+import { DeleteButton } from "@/components/delete-button";
 import { fmtDate, isoDate, money, num, optDate, optStr, round2, str } from "@/lib/utils";
 
 export const metadata = { title: "Fixed assets" };
@@ -74,7 +75,7 @@ export default async function AssetsPage() {
         <div className="space-y-6 xl:col-span-2">
           <Card>
             <Table>
-              <thead><tr><th>Asset</th><th>Category</th><th>Purchased</th><th className="num">Cost</th><th className="num">Life</th><th className="num">Accum. dep.</th><th className="num">NBV</th></tr></thead>
+              <thead><tr><th>Asset</th><th>Category</th><th>Purchased</th><th className="num">Cost</th><th className="num">Life</th><th className="num">Accum. dep.</th><th className="num">NBV</th>{can(ctx.user.role, "delete") && <th />}</tr></thead>
               <tbody>
                 {assets.map((a) => {
                   const dep = round2(accum.get(a.id) ?? 0);
@@ -87,6 +88,7 @@ export default async function AssetsPage() {
                       <td className="num">{a.usefulLifeYears} yrs</td>
                       <td className="num text-amber-700">{money(dep)}</td>
                       <td className="num font-semibold">{money(a.baseCost - dep)}</td>
+                      {can(ctx.user.role, "delete") && <td className="text-right"><DeleteButton compact kind="asset" id={a.id} back="/app/assets" label="" confirm={`Delete ${a.assetNo} ${a.name}? The purchase and all its depreciation are removed from your books. This cannot be undone.`} /></td>}
                     </tr>
                   );
                 })}

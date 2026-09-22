@@ -25,7 +25,7 @@ export function computeOrderTotals(items: OrderLineInput[], discount: number, ta
   return { subtotal, tax, total };
 }
 
-async function adjustStock(tx: Tx, args: { productId: string; branchId: string; qty: number; unitCost: number; type: string; reference?: string; note?: string }) {
+export async function adjustStock(tx: Tx, args: { productId: string; branchId: string; qty: number; unitCost: number; type: string; reference?: string; note?: string }) {
   await tx.stockLevel.upsert({
     where: { productId_branchId: { productId: args.productId, branchId: args.branchId } },
     create: { productId: args.productId, branchId: args.branchId, quantity: args.qty },
@@ -83,7 +83,7 @@ export async function invoiceOrder(tx: Tx, orderId: string, date = new Date()) {
   const receiptIds = order.receipts.map((x) => x.id);
   const depositLines = receiptIds.length
     ? await tx.journalLine.aggregate({
-        where: { account: { orgId: order.orgId, code: "2200" }, entry: { orgId: order.orgId, source: { in: ["RECEIPT", "RECEIPT_REVERSAL"] }, sourceId: { in: receiptIds } } },
+        where: { account: { orgId: order.orgId, code: "2200" }, entry: { orgId: order.orgId, source: { in: ["RECEIPT", "RECEIPT_REVERSAL", "REFUND", "REFUND_REVERSAL"] }, sourceId: { in: receiptIds } } },
         _sum: { debit: true, credit: true },
       })
     : null;
@@ -113,7 +113,7 @@ export async function invoiceOrder(tx: Tx, orderId: string, date = new Date()) {
 }
 
 /** Takes a posted order back out of the books and returns its stock (before cancelling or editing). */
-async function unpostOrder(tx: Tx, orderId: string, date: Date, reason: string) {
+export async function unpostOrder(tx: Tx, orderId: string, date: Date, reason: string) {
   const order = await tx.order.findUniqueOrThrow({ where: { id: orderId }, include: { items: { include: { product: true } } } });
   if (!order.invoicedAt) return order;
   await reverseSource(tx, order.orgId, "ORDER", order.id, date);

@@ -473,6 +473,7 @@ model Receipt {
   branchId     String
   branch       Branch       @relation(fields: [branchId], references: [id])
   receiptNo    String
+  kind         String       @default("PAYMENT") // PAYMENT | REFUND (money paid back to the patient; amount stored as a positive number)
   patientId    String?
   patient      Patient?     @relation(fields: [patientId], references: [id])
   orderId      String?

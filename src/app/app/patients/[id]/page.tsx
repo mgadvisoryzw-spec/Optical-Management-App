@@ -11,6 +11,7 @@ import { APPOINTMENT_STATUSES, APPOINTMENT_TYPES, LENS_TYPES, ORDER_STATUSES, PA
 import { age, fmtDate, fmtDateTime, fullName, isoDate, money, addDays } from "@/lib/utils";
 import { patientVars, renderTemplate } from "@/lib/messaging";
 import { createFollowUp } from "../actions";
+import { DeleteButton } from "@/components/delete-button";
 
 export default async function PatientPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string }> }) {
   const { id } = await params;
@@ -71,6 +72,9 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {can(ctx.user.role, "delete") && (
+              <DeleteButton kind="patient" id={p.id} back={`/app/patients/${p.id}`} className="[&_button]:text-rose-200 [&_button:hover]:bg-white/10" confirm={`Permanently delete ${p.firstName} ${p.lastName}, with their prescriptions, appointments and follow-ups? Patients with orders or receipts can't be deleted. This cannot be undone.`} />
+            )}
             <LinkButton variant="secondary" href={`/app/patients/${p.id}/edit`}><Pencil size={15} /> Edit</LinkButton>
             <LinkButton variant="secondary" href={`/app/appointments/new?patientId=${p.id}`}><CalendarPlus size={15} /> Book</LinkButton>
             {canRx && <LinkButton variant="secondary" href={`/app/patients/${p.id}/prescriptions/new`}><Eye size={15} /> New exam</LinkButton>}
@@ -163,8 +167,8 @@ export default async function PatientPage({ params, searchParams }: { params: Pr
               <ul className="divide-y divide-slate-100 text-sm">
                 {p.receipts.map((r) => (
                   <li key={r.id} className="flex justify-between px-5 py-2.5">
-                    <span><b>{r.receiptNo}</b> <span className="text-slate-500">· {fmtDate(r.date)} · {labelOf(PAYMENT_METHODS, r.method)}</span></span>
-                    <span className="font-semibold tabular-nums">{money(r.amount, r.currency)}</span>
+                    <span><Link href={`/app/receipts/${r.id}`} className="font-semibold text-brand-700">{r.receiptNo}</Link> <span className="text-slate-500">· {fmtDate(r.date)} · {labelOf(PAYMENT_METHODS, r.method)}{r.kind === "REFUND" ? " · refund" : ""}</span></span>
+                    <span className={`font-semibold tabular-nums ${r.kind === "REFUND" ? "text-violet-700" : ""}`}>{money(r.kind === "REFUND" ? -r.amount : r.amount, r.currency)}</span>
                   </li>
                 ))}
                 {!p.receipts.length && <li className="px-5 py-6 text-center text-slate-400">No payments yet.</li>}

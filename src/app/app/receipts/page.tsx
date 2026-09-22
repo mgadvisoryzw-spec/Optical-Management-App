@@ -16,15 +16,17 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Pro
   const where = { orgId: ctx.orgId, ...branchScope(ctx), date: { gte: from, lte: to }, ...(sp.method ? { method: sp.method } : {}) };
   const receipts = await db.receipt.findMany({ where, include: { patient: true, order: { include: { items: true } }, branch: true }, orderBy: { date: "desc" }, take: 300 });
   const live = receipts.filter((r) => !r.voided);
-  const total = round2(live.reduce((s, r) => s + r.baseAmount, 0));
-  const byMethod = PAYMENT_METHODS.map((m) => ({ ...m, total: round2(live.filter((r) => r.method === m.value).reduce((s, r) => s + r.baseAmount, 0)) })).filter((m) => m.total);
-  const byCurrency = [...new Set(live.map((r) => r.currency))].map((c) => ({ c, total: round2(live.filter((r) => r.currency === c).reduce((s, r) => s + r.amount, 0)) }));
+  const sign = (r: { kind: string }) => (r.kind === "REFUND" ? -1 : 1);
+  const total = round2(live.reduce((s, r) => s + sign(r) * r.baseAmount, 0));
+  const refunds = round2(live.filter((r) => r.kind === "REFUND").reduce((s, r) => s + r.baseAmount, 0));
+  const byMethod = PAYMENT_METHODS.map((m) => ({ ...m, total: round2(live.filter((r) => r.method === m.value).reduce((s, r) => s + sign(r) * r.baseAmount, 0)) })).filter((m) => m.total);
+  const byCurrency = [...new Set(live.map((r) => r.currency))].map((c) => ({ c, total: round2(live.filter((r) => r.currency === c).reduce((s, r) => s + sign(r) * r.amount, 0)) }));
 
   return (
     <>
       <PageHeader title="Receipts" subtitle="Money received from patients" actions={<LinkButton href="/app/receipts/new"><Plus size={16} /> New receipt</LinkButton>} />
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <StatCard label="Total received" value={money(total, ctx.org.baseCurrency)} hint={`${live.length} receipts in period`} />
+        <StatCard label="Total received" value={money(total, ctx.org.baseCurrency)} hint={`${live.length} receipts in period${refunds ? ` · after ${money(refunds, ctx.org.baseCurrency)} refunded` : ""}`} />
         <StatCard label="By currency" value={<span className="text-base">{byCurrency.map((b) => money(b.total, b.c)).join(" · ") || "—"}</span>} accent="violet" />
         <StatCard label="Top method" value={<span className="text-base">{byMethod.sort((a, b) => b.total - a.total).slice(0, 2).map((m) => `${m.label} ${money(m.total)}`).join(" · ") || "—"}</span>} accent="green" />
       </div>
@@ -46,7 +48,7 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Pro
             <tbody>
               {receipts.map((r) => (
                 <tr key={r.id} className={r.voided ? "opacity-50" : ""}>
-                  <td><Link href={`/app/receipts/${r.id}`} className="font-semibold text-brand-700">{r.receiptNo}</Link> {r.voided && <Badge tone="red">Void</Badge>}</td>
+                  <td><Link href={`/app/receipts/${r.id}`} className="font-semibold text-brand-700">{r.receiptNo}</Link> {r.voided && <Badge tone="red">Void</Badge>}{r.kind === "REFUND" && <Badge tone="violet">Refund</Badge>}</td>
                   <td>{fmtDate(r.date)}</td>
                   <td>{r.patient ? fullName(r.patient) : "—"}</td>
                   <td className="max-w-72">
@@ -61,8 +63,8 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Pro
                   </td>
                   <td>{labelOf(PAYMENT_METHODS, r.method)}</td>
                   {!ctx.branchId && <td className="text-slate-500">{r.branch.name}</td>}
-                  <td className="num">{money(r.amount, r.currency)}</td>
-                  <td className="num text-slate-500">{money(r.baseAmount, ctx.org.baseCurrency)}</td>
+                  <td className={`num ${r.kind === "REFUND" ? "text-violet-700" : ""}`}>{money(sign(r) * r.amount, r.currency)}</td>
+                  <td className="num text-slate-500">{money(sign(r) * r.baseAmount, ctx.org.baseCurrency)}</td>
                 </tr>
               ))}
             </tbody>
