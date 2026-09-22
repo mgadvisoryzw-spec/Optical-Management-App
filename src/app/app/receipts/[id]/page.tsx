@@ -3,14 +3,14 @@ import { getContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ConfirmButton, PrintButton } from "@/components/client";
 import { Alert, LinkButton } from "@/components/ui";
-import { PAYMENT_METHODS, can, labelOf } from "@/lib/constants";
+import { PAYMENT_METHODS, SALE_CATEGORIES, can, labelOf } from "@/lib/constants";
 import { fmtDateTime, fullName, money } from "@/lib/utils";
 import { voidReceiptAction } from "../actions";
 
 export default async function ReceiptPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const ctx = await getContext();
-  const r = await db.receipt.findFirst({ where: { id, orgId: ctx.orgId }, include: { patient: true, order: true, branch: true } });
+  const r = await db.receipt.findFirst({ where: { id, orgId: ctx.orgId }, include: { patient: true, order: { include: { items: true } }, branch: true } });
   if (!r) notFound();
   return (
     <div className="mx-auto max-w-md">
@@ -36,15 +36,36 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
         <dl className="mt-6 space-y-2 border-y border-dashed border-slate-300 py-4">
           <div className="flex justify-between"><dt className="text-slate-500">Date</dt><dd>{fmtDateTime(r.date)}</dd></div>
           <div className="flex justify-between"><dt className="text-slate-500">Received from</dt><dd>{r.patient ? fullName(r.patient) : "—"}</dd></div>
-          {r.order && <div className="flex justify-between"><dt className="text-slate-500">For order</dt><dd>{r.order.orderNo}</dd></div>}
+          {r.order && <div className="flex justify-between"><dt className="text-slate-500">{r.order.isCashSale ? "Sale no." : "For order"}</dt><dd>{r.order.orderNo}</dd></div>}
           <div className="flex justify-between"><dt className="text-slate-500">Method</dt><dd>{labelOf(PAYMENT_METHODS, r.method)}</dd></div>
           {r.reference && <div className="flex justify-between"><dt className="text-slate-500">Reference</dt><dd>{r.reference}</dd></div>}
         </dl>
+        {r.order && (
+          <div className="border-b border-dashed border-slate-300 py-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">Paid for</p>
+            <table className="w-full">
+              <tbody>
+                {r.order.items.map((i) => (
+                  <tr key={i.id} className="align-top">
+                    <td className="py-1 pr-2">
+                      {i.description}
+                      <span className="block text-xs text-slate-400">{labelOf(SALE_CATEGORIES, i.category)}{i.quantity !== 1 ? ` · ${i.quantity} × ${money(i.unitPrice, r.order!.currency)}` : ""}</span>
+                    </td>
+                    <td className="py-1 text-right tabular-nums">{money(i.lineTotal, r.order!.currency)}</td>
+                  </tr>
+                ))}
+                {r.order.discount > 0 && <tr><td className="py-1">Discount</td><td className="py-1 text-right tabular-nums">-{money(r.order.discount, r.order.currency)}</td></tr>}
+                {r.order.tax > 0 && <tr><td className="py-1">VAT {r.order.taxRate}%</td><td className="py-1 text-right tabular-nums">{money(r.order.tax, r.order.currency)}</td></tr>}
+                {!r.order.isCashSale && <tr className="font-semibold"><td className="py-1">Order total</td><td className="py-1 text-right tabular-nums">{money(r.order.total, r.order.currency)}</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        )}
         <div className="flex items-baseline justify-between py-4">
           <span className="font-semibold">Amount paid</span>
           <span className="text-2xl font-bold">{money(r.amount, r.currency)}</span>
         </div>
-        {r.order && <p className="text-right text-slate-500">Balance remaining on order: {money(r.order.patientPortion - r.order.amountPaid, r.order.currency)}</p>}
+        {r.order && !r.order.isCashSale && <p className="text-right text-slate-500">Balance remaining on order: {money(r.order.patientPortion - r.order.amountPaid, r.order.currency)}</p>}
         <p className="mt-8 text-center text-xs text-slate-400">Thank you!</p>
       </div>
     </div>

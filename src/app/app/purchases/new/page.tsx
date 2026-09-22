@@ -1,13 +1,14 @@
 import { getContext } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { PageHeader } from "@/components/ui";
+import { Alert, PageHeader } from "@/components/ui";
 import { PurchaseBuilder } from "./purchase-builder";
 import { createPurchase } from "../actions";
 import { isoDate } from "@/lib/utils";
 
 export const metadata = { title: "New purchase" };
 
-export default async function NewPurchase() {
+export default async function NewPurchase({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const sp = await searchParams;
   const ctx = await getContext();
   const [products, suppliers, currencies] = await Promise.all([
     db.product.findMany({ where: { orgId: ctx.orgId, active: true }, orderBy: { name: "asc" }, select: { id: true, name: true, sku: true, category: true, costPrice: true } }),
@@ -17,6 +18,7 @@ export default async function NewPurchase() {
   return (
     <>
       <PageHeader title="Record a purchase" subtitle="Frames, lenses, contact lenses, accessories and consumables from suppliers and labs" back={{ href: "/app/purchases", label: "Purchases" }} />
+      {sp.error && <div className="mb-4"><Alert tone="red">{sp.error}</Alert></div>}
       <PurchaseBuilder
         action={createPurchase}
         products={products}

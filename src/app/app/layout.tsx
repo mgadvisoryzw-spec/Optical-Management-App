@@ -42,7 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <header className="no-print sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-slate-200/70 bg-white/85 px-6 pl-16 backdrop-blur lg:pl-6">
           <form action="/app/patients" className="relative hidden max-w-md flex-1 md:block">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input name="q" placeholder="Search patients by name, phone, patient no. or medical aid no.…" className="input pl-9" />
+            <input name="q" placeholder="Search patients by name, phone or number…" className="input pl-9" />
           </form>
           <div className="ml-auto flex items-center gap-3">
             {ctx.canSwitchBranch ? (

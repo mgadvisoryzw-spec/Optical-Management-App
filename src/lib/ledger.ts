@@ -79,10 +79,16 @@ export async function postJournal(
   });
 }
 
-/** Removes all journals raised by a source document (used when voiding/cancelling). */
+/**
+ * Reverses every journal raised by a source document that has not already been reversed
+ * (used when voiding, cancelling or editing). Safe to call more than once.
+ */
 export async function reverseSource(tx: Tx, orgId: string, source: string, sourceId: string, date = new Date()) {
-  const entries = await tx.journalEntry.findMany({ where: { orgId, source, sourceId }, include: { lines: { include: { account: true } } } });
+  const entries = await tx.journalEntry.findMany({ where: { orgId, source, sourceId }, include: { lines: { include: { account: true } } }, orderBy: { createdAt: "asc" } });
+  const reversals = await tx.journalEntry.findMany({ where: { orgId, source: source + "_REVERSAL", sourceId }, select: { memo: true } });
+  const alreadyReversed = new Set(reversals.map((r) => r.memo.match(/^Reversal of (\S+):/)?.[1]).filter(Boolean));
   for (const e of entries) {
+    if (alreadyReversed.has(e.entryNo)) continue;
     await postJournal(tx, {
       orgId,
       branchId: e.lines[0]?.branchId,

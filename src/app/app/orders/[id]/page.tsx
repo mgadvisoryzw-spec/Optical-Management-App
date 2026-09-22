@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Check, FileText, MessageCircle } from "lucide-react";
+import { Check, FileText, MessageCircle, Pencil } from "lucide-react";
 import { getContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Alert, Badge, Card, CardHeader, Field, Input, LinkButton, PageHeader, Select, Table } from "@/components/ui";
@@ -19,7 +19,7 @@ const NEXT: Record<string, { status: string; label: string }[]> = {
   READY: [{ status: "COLLECTED", label: "Patient collected" }],
 };
 
-export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ wa?: string }> }) {
+export default async function OrderPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ wa?: string; saved?: string }> }) {
   const { id } = await params;
   const sp = await searchParams;
   const ctx = await getContext();
@@ -35,6 +35,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
 
   return (
     <div className="space-y-6">
+      {sp.saved && <Alert tone="green">Order updated.{o.invoicedAt ? " Your books and stock have been adjusted to match." : ""}</Alert>}
       {sp.wa && (
         <Alert tone="green">
           Order marked ready. <a href={sp.wa} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold underline"><MessageCircle size={14} /> Open WhatsApp to send the message</a>
@@ -46,6 +47,7 @@ export default async function OrderPage({ params, searchParams }: { params: Prom
         back={{ href: "/app/orders", label: "Orders" }}
         actions={
           <>
+            {o.status !== "CANCELLED" && <LinkButton href={`/app/orders/${o.id}/edit`}><Pencil size={15} /> Edit order</LinkButton>}
             <LinkButton variant="secondary" href={`/app/orders/${o.id}/print?doc=invoice`}><FileText size={15} /> {o.status === "QUOTE" ? "Quotation" : "Invoice"}</LinkButton>
             <LinkButton variant="secondary" href={`/app/orders/${o.id}/print?doc=job`}><FileText size={15} /> Job card</LinkButton>
           </>

@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireWrite } from "@/lib/auth";
-import { invoiceOrder, recordClaimPayment } from "@/lib/services";
-import { num, optStr, round2, str } from "@/lib/utils";
+import { invoiceOrder, recordClaimPayment, updateClaimDetails } from "@/lib/services";
+import { num, optDate, optStr, round2, str } from "@/lib/utils";
+import { redirect } from "next/navigation";
 
 async function loadClaim(id: string) {
   const ctx = await requireWrite("sales");
@@ -66,4 +67,26 @@ export async function rejectClaim(id: string, fd: FormData) {
     await tx.medicalAidClaim.update({ where: { id }, data: { status: "REJECTED", notes: optStr(fd.get("notes")) } });
   });
   revalidatePath(`/app/medical-aid/${id}`);
+}
+
+export async function updateClaim(id: string, fd: FormData) {
+  await loadClaim(id);
+  let error: string | null = null;
+  try {
+    await db.$transaction((tx) =>
+      updateClaimDetails(tx, {
+        claimId: id,
+        memberNo: optStr(fd.get("memberNo")),
+        authNumber: optStr(fd.get("authNumber")),
+        amount: num(fd.get("amount")),
+        status: str(fd.get("status")),
+        submittedAt: optDate(fd.get("submittedAt")),
+        notes: optStr(fd.get("notes")),
+      }),
+    );
+  } catch (e) {
+    error = (e as Error).message;
+  }
+  if (error) redirect(`/app/medical-aid/${id}?error=${encodeURIComponent(error)}`);
+  redirect(`/app/medical-aid/${id}?saved=1`);
 }

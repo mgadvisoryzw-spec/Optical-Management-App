@@ -14,7 +14,7 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Pro
   const from = sp.from ? new Date(sp.from) : startOfMonth();
   const to = sp.to ? endOfDay(new Date(sp.to)) : endOfDay();
   const where = { orgId: ctx.orgId, ...branchScope(ctx), date: { gte: from, lte: to }, ...(sp.method ? { method: sp.method } : {}) };
-  const receipts = await db.receipt.findMany({ where, include: { patient: true, order: true, branch: true }, orderBy: { date: "desc" }, take: 300 });
+  const receipts = await db.receipt.findMany({ where, include: { patient: true, order: { include: { items: true } }, branch: true }, orderBy: { date: "desc" }, take: 300 });
   const live = receipts.filter((r) => !r.voided);
   const total = round2(live.reduce((s, r) => s + r.baseAmount, 0));
   const byMethod = PAYMENT_METHODS.map((m) => ({ ...m, total: round2(live.filter((r) => r.method === m.value).reduce((s, r) => s + r.baseAmount, 0)) })).filter((m) => m.total);
@@ -42,14 +42,23 @@ export default async function ReceiptsPage({ searchParams }: { searchParams: Pro
         </form>
         {receipts.length ? (
           <Table>
-            <thead><tr><th>Receipt</th><th>Date</th><th>Patient</th><th>Order</th><th>Method</th>{!ctx.branchId && <th>Branch</th>}<th className="num">Amount</th><th className="num">{ctx.org.baseCurrency} equiv.</th></tr></thead>
+            <thead><tr><th>Receipt</th><th>Date</th><th>Patient</th><th>Paid for</th><th>Method</th>{!ctx.branchId && <th>Branch</th>}<th className="num">Amount</th><th className="num">{ctx.org.baseCurrency} equiv.</th></tr></thead>
             <tbody>
               {receipts.map((r) => (
                 <tr key={r.id} className={r.voided ? "opacity-50" : ""}>
                   <td><Link href={`/app/receipts/${r.id}`} className="font-semibold text-brand-700">{r.receiptNo}</Link> {r.voided && <Badge tone="red">Void</Badge>}</td>
                   <td>{fmtDate(r.date)}</td>
                   <td>{r.patient ? fullName(r.patient) : "—"}</td>
-                  <td>{r.order ? <Link href={`/app/orders/${r.order.id}`} className="text-brand-700">{r.order.orderNo}</Link> : <span className="text-slate-400">Deposit</span>}</td>
+                  <td className="max-w-72">
+                    {r.order ? (
+                      <>
+                        <span className="block truncate text-sm" title={r.order.items.map((i) => i.description).join(", ")}>{r.order.items.map((i) => i.description).join(", ")}</span>
+                        <Link href={`/app/orders/${r.order.id}`} className="text-xs text-brand-700">{r.order.isCashSale ? "Cash sale" : "Order"} {r.order.orderNo}</Link>
+                      </>
+                    ) : (
+                      <span className="text-slate-400">Deposit</span>
+                    )}
+                  </td>
                   <td>{labelOf(PAYMENT_METHODS, r.method)}</td>
                   {!ctx.branchId && <td className="text-slate-500">{r.branch.name}</td>}
                   <td className="num">{money(r.amount, r.currency)}</td>

@@ -422,6 +422,7 @@ model Order {
   prescriptionId    String?
   prescription      Prescription? @relation(fields: [prescriptionId], references: [id])
   status            String       @default("QUOTE") // QUOTE | AWAITING_AUTH | ORDERED | IN_LAB | READY | COLLECTED | CANCELLED
+  isCashSale        Boolean      @default(false) // over-the-counter sale paid in full from the receipt form
   currency          String
   exchangeRate      Float        @default(1)
   subtotal          Float        @default(0)

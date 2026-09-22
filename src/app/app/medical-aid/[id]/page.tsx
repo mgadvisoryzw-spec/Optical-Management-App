@@ -2,14 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getContext } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { Badge, Card, CardHeader, Field, Input, PageHeader, Select, Textarea } from "@/components/ui";
+import { Alert, Badge, Card, CardHeader, Field, Input, LinkButton, PageHeader, Select, Textarea } from "@/components/ui";
 import { ConfirmButton, SubmitButton } from "@/components/client";
 import { CLAIM_STATUSES, PAYMENT_METHODS, labelOf, toneOf } from "@/lib/constants";
-import { fmtDate, fullName, money } from "@/lib/utils";
-import { authoriseClaim, claimPayment, rejectClaim, submitClaim } from "../actions";
+import { fmtDate, fullName, isoDate, money } from "@/lib/utils";
+import { authoriseClaim, claimPayment, rejectClaim, submitClaim, updateClaim } from "../actions";
 
-export default async function ClaimPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ClaimPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string; error?: string }> }) {
   const { id } = await params;
+  const sp = await searchParams;
   const ctx = await getContext();
   const c = await db.medicalAidClaim.findFirst({ where: { id, orgId: ctx.orgId }, include: { patient: true, medicalAid: true, order: { include: { items: true } } } });
   if (!c) notFound();
@@ -22,7 +23,10 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
         title={<span className="flex items-center gap-3">{c.claimNo} <Badge tone={toneOf(CLAIM_STATUSES, c.status)}>{labelOf(CLAIM_STATUSES, c.status)}</Badge></span>}
         subtitle={`${c.medicalAid.name} · ${fullName(c.patient)} · member ${c.memberNo ?? "—"}`}
         back={{ href: "/app/medical-aid", label: "Claims" }}
+        actions={<LinkButton variant="secondary" href={`/app/orders/${c.orderId}/edit`}>Edit order items</LinkButton>}
       />
+      {sp.saved && <div className="mb-4"><Alert tone="green">Claim updated.</Alert></div>}
+      {sp.error && <div className="mb-4"><Alert tone="red">{sp.error}</Alert></div>}
       <div className="grid gap-6 xl:grid-cols-3">
         <div className="space-y-6 xl:col-span-2">
           <Card>
@@ -45,6 +49,30 @@ export default async function ClaimPage({ params }: { params: Promise<{ id: stri
               </ul>
             </div>
             {c.notes && <p className="border-t border-slate-100 p-5 text-sm text-slate-600">{c.notes}</p>}
+          </Card>
+
+          <Card id="edit">
+            <CardHeader title="Edit claim details" subtitle="Correct the member number, authorisation, amount claimed or status" />
+            <form action={updateClaim.bind(null, c.id)} className="grid gap-4 p-5 sm:grid-cols-2">
+              <Field label="Member number"><Input name="memberNo" defaultValue={c.memberNo ?? ""} /></Field>
+              <Field label="Authorisation number"><Input name="authNumber" defaultValue={c.authNumber ?? ""} /></Field>
+              <Field label={`Amount claimed (${c.currency})`} hint={`The rest of the order (${money(c.order.total, c.order.currency)}) is billed to the patient. Can't be less than already paid (${money(c.paidAmount, c.currency)}).`}>
+                <Input name="amount" type="number" step="0.01" min={c.paidAmount} max={c.order.total} defaultValue={c.amount} required />
+              </Field>
+              <Field label="Status" hint={["PAID", "PART_PAID", "REJECTED"].includes(c.status) ? "Set automatically by remittances" : undefined}>
+                {["PENDING_AUTH", "AUTHORISED", "SUBMITTED"].includes(c.status) ? (
+                  <Select name="status" defaultValue={c.status} options={CLAIM_STATUSES.filter((s) => ["PENDING_AUTH", "AUTHORISED", "SUBMITTED"].includes(s.value)).map((s) => ({ value: s.value, label: s.label }))} />
+                ) : (
+                  <>
+                    <input type="hidden" name="status" value={c.status} />
+                    <Input value={labelOf(CLAIM_STATUSES, c.status)} disabled />
+                  </>
+                )}
+              </Field>
+              <Field label="Date submitted"><Input name="submittedAt" type="date" defaultValue={isoDate(c.submittedAt)} /></Field>
+              <Field label="Notes" className="sm:col-span-2"><Textarea name="notes" rows={2} defaultValue={c.notes ?? ""} /></Field>
+              <div className="sm:col-span-2"><SubmitButton>Save claim</SubmitButton></div>
+            </form>
           </Card>
         </div>
         <div className="space-y-6">

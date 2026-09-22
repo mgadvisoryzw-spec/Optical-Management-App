@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { requireWrite } from "@/lib/auth";
 import { nextNumber } from "@/lib/ledger";
-import { cancelOrder, computeOrderTotals, invoiceOrder, recordReceipt, type OrderLineInput } from "@/lib/services";
+import { cancelOrder, computeOrderTotals, invoiceOrder, recordReceipt, updateOrderContents, type OrderLineInput } from "@/lib/services";
 import { renderTemplate, sendMessage, patientVars } from "@/lib/messaging";
 import { money, num, optDate, optStr, round2, str } from "@/lib/utils";
 
@@ -151,4 +151,42 @@ export async function addOrderPayment(orderId: string, fd: FormData) {
     }),
   );
   revalidatePath(`/app/orders/${orderId}`);
+}
+
+export async function updateOrder(orderId: string, fd: FormData) {
+  const ctx = await requireWrite("sales");
+  const order = await db.order.findFirstOrThrow({ where: { id: orderId, orgId: ctx.orgId } });
+  const items = (JSON.parse(str(fd.get("items")) || "[]") as OrderLineInput[]).filter((i) => i.description && i.quantity > 0);
+  const fail = (msg: string) => redirect(`/app/orders/${orderId}/edit?error=${encodeURIComponent(msg)}`);
+  if (!items.length) fail("Add at least one item");
+  for (const i of items) if (i.productId) await db.product.findFirstOrThrow({ where: { id: i.productId, orgId: ctx.orgId } });
+  const medicalAidId = optStr(fd.get("medicalAidId"));
+  if (medicalAidId) await db.medicalAid.findFirstOrThrow({ where: { id: medicalAidId, orgId: ctx.orgId } });
+  const currency = str(fd.get("currency")) || order.currency;
+  await db.currency.findUniqueOrThrow({ where: { orgId_code: { orgId: ctx.orgId, code: currency } } });
+  let error: string | null = null;
+  try {
+    await db.$transaction(
+      (tx) =>
+        updateOrderContents(tx, {
+          orderId,
+          items,
+          discount: round2(num(fd.get("discount"))),
+          taxRate: num(fd.get("taxRate")),
+          currency,
+          exchangeRate: num(fd.get("exchangeRate"), order.exchangeRate) || 1,
+          medicalAidId,
+          medicalAidPortion: num(fd.get("medicalAidPortion")),
+          prescriptionId: optStr(fd.get("prescriptionId")),
+          labName: optStr(fd.get("labName")),
+          promisedDate: optDate(fd.get("promisedDate")),
+          notes: optStr(fd.get("notes")),
+        }),
+      { timeout: 20000 },
+    );
+  } catch (e) {
+    error = (e as Error).message;
+  }
+  if (error) fail(error);
+  redirect(`/app/orders/${orderId}?saved=1`);
 }
