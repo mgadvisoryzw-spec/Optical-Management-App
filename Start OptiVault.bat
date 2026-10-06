@@ -9,6 +9,13 @@ if errorlevel 1 (
   exit /b 1
 )
 
+if not exist ".env" (
+  echo First run: creating the .env configuration file...
+  copy ".env.example" ".env" >nul || goto :failed
+  for /f %%A in ('powershell -NoProfile -Command "[Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')"') do set "GENSECRET=%%A"
+  powershell -NoProfile -Command "(Get-Content '.env') -replace '^AUTH_SECRET=.*', ('AUTH_SECRET=\"' + $env:GENSECRET + '\"') | Set-Content '.env'" || goto :failed
+)
+
 if not exist "node_modules" (
   echo First run: installing dependencies. This can take a few minutes...
   call npm install || goto :failed
