@@ -14,6 +14,10 @@ if not exist ".env" (
   copy ".env.example" ".env" >nul || goto :failed
   for /f %%A in ('powershell -NoProfile -Command "[Guid]::NewGuid().ToString('N') + [Guid]::NewGuid().ToString('N')"') do set "GENSECRET=%%A"
   powershell -NoProfile -Command "(Get-Content '.env') -replace '^AUTH_SECRET=.*', ('AUTH_SECRET=\"' + $env:GENSECRET + '\"') | Set-Content '.env'" || goto :failed
+  rem This launcher is a single-computer demo running on the local SQLite file,
+  rem so allow it past the startup check that keeps real deployments on a
+  rem shared database. DEPLOYMENT.md covers sharing one database properly.
+  powershell -NoProfile -Command "Add-Content '.env' ''; Add-Content '.env' 'ALLOW_UNSAFE_ENV=\"true\"'" || goto :failed
 )
 
 if not exist "node_modules" (
