@@ -18,8 +18,32 @@ export async function loginAction(_: AuthState, fd: FormData): Promise<AuthState
   }
   await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
   await createSession({ uid: user.id, oid: user.orgId, sa: user.isSuperAdmin });
-  if (user.isSuperAdmin && !user.orgId) redirect("/admin");
+  if (user.isSuperAdmin && !user.orgId) redirect("/platform");
   redirect(next.startsWith("/app") ? next : "/app");
+}
+
+/**
+ * Sign-in for the MG Advisory platform owner account. Separate from the practice
+ * login so the console has its own front door and rejects tenant credentials outright.
+ */
+export async function platformLoginAction(_: AuthState, fd: FormData): Promise<AuthState> {
+  const email = str(fd.get("email")).toLowerCase();
+  const password = str(fd.get("password"));
+  const user = await db.user.findUnique({ where: { email } });
+  if (!user || !user.active || !(await verifyPassword(password, user.passwordHash))) {
+    return { error: "Those credentials don't match a platform owner account." };
+  }
+  if (!user.isSuperAdmin) {
+    return { error: "This is the MG Advisory platform console. Practice users sign in at the practice login." };
+  }
+  await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+  await createSession({ uid: user.id, oid: user.orgId, sa: true });
+  redirect("/platform");
+}
+
+export async function platformLogoutAction() {
+  await destroySession();
+  redirect("/platform/login");
 }
 
 export async function signupAction(_: AuthState, fd: FormData): Promise<AuthState> {

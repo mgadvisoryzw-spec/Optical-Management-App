@@ -16,7 +16,7 @@ if not exist "node_modules" (
 
 if not exist "prisma\dev.db" (
   echo Creating the database and loading the demo practice...
-  call npx prisma db push || goto :failed
+  call npm run db:push || goto :failed
   call npm run db:seed || goto :failed
 )
 
@@ -29,6 +29,10 @@ echo.
 echo OptiVault is starting at http://localhost:3000
 echo Demo login: owner@demo-optical.co.zw / demo1234
 echo Close this window to stop the server.
+echo.
+echo NOTE: this launcher runs OptiVault against a database file on THIS computer,
+echo so logins created here do not work on other machines. To share one database
+echo across every computer, see DEPLOYMENT.md.
 echo.
 start "" http://localhost:3000
 call npm start

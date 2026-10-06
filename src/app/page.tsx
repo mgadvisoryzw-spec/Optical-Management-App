@@ -260,7 +260,12 @@ export default function Landing() {
       <footer className="border-t border-slate-100">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4 px-6 py-8 text-sm text-slate-500">
           <Logo />
-          <p>© {new Date().getFullYear()} OptiVault. Optical practice management & accounting.</p>
+          <div className="text-right">
+            <p>© {new Date().getFullYear()} OptiVault. Optical practice management &amp; accounting.</p>
+            <p className="mt-1 text-xs">
+              Designed, built and supported by <span className="font-semibold text-slate-700">MG Advisory</span>.
+            </p>
+          </div>
         </div>
       </footer>
     </div>

@@ -1,17 +1,22 @@
 {
   "name": "optivault",
   "version": "1.0.0",
-  "description": "OptiVault — optical practice management & accounting SaaS",
+  "description": "OptiVault \u2014 optical practice management & accounting SaaS",
   "scripts": {
-    "dev": "next dev",
-    "build": "prisma generate && next build",
+    "dev": "node scripts/prisma.mjs generate && next dev",
+    "build": "node scripts/prisma.mjs generate && next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
-    "db:push": "prisma db push",
-    "db:seed": "tsx prisma/seed.ts",
-    "db:reset": "prisma db push --force-reset && tsx prisma/seed.ts",
-    "postinstall": "prisma generate"
+    "typecheck": "node scripts/prisma.mjs generate && tsc --noEmit",
+    "db:push": "node scripts/prisma.mjs db push",
+    "db:seed": "node scripts/prisma.mjs generate && tsx prisma/seed.ts",
+    "db:reset": "node scripts/prisma.mjs db push --force-reset && npm run db:seed",
+    "db:studio": "node scripts/prisma.mjs studio",
+    "data:export": "node scripts/prisma.mjs generate && tsx scripts/data-transfer.ts --export",
+    "data:import": "node scripts/prisma.mjs generate && tsx scripts/data-transfer.ts --import",
+    "schema:check": "node scripts/sync-sqlite-schema.mjs --check",
+    "grant": "node scripts/prisma.mjs generate && tsx scripts/grant-subscription.ts",
+    "postinstall": "node scripts/prisma.mjs generate"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

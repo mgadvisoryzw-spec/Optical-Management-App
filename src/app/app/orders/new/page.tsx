@@ -6,6 +6,7 @@ import { Card, PageHeader, Table } from "@/components/ui";
 import { OrderBuilder } from "./order-builder";
 import { createOrder } from "../actions";
 import { dioptre, fmtDate, fullName } from "@/lib/utils";
+import { likeAny } from "@/lib/search";
 
 export const metadata = { title: "New order" };
 
@@ -16,7 +17,7 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Pro
   if (!sp.patientId) {
     const q = (sp.q ?? "").trim();
     const patients = await db.patient.findMany({
-      where: { orgId: ctx.orgId, ...(q ? { OR: [{ firstName: { contains: q } }, { lastName: { contains: q } }, { phone: { contains: q } }, { patientNo: { contains: q } }] } : {}) },
+      where: { orgId: ctx.orgId, ...(q ? { OR: likeAny(["firstName", "lastName", "phone", "patientNo"], q) } : {}) },
       orderBy: q ? { lastName: "asc" } : { createdAt: "desc" },
       take: 20,
     });

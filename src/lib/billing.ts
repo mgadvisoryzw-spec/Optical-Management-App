@@ -6,16 +6,29 @@ export function paynowConfigured() {
   return !!(process.env.PAYNOW_INTEGRATION_ID && process.env.PAYNOW_INTEGRATION_KEY);
 }
 
+/** Next sequential subscription invoice number, e.g. OV-2026-00014. */
+async function nextInvoiceNumber() {
+  const year = new Date().getFullYear();
+  const count = await db.subscriptionInvoice.count();
+  let n = count + 1;
+  // Guard against collisions if invoices were created out of band.
+  for (let i = 0; i < 50; i++) {
+    const number = `OV-${year}-${String(n).padStart(5, "0")}`;
+    if (!(await db.subscriptionInvoice.findUnique({ where: { number } }))) return number;
+    n++;
+  }
+  return `OV-${year}-${Date.now()}`;
+}
+
 export async function createSubscriptionInvoice(orgId: string, planCode: string, cycle: "MONTHLY" | "YEARLY") {
   const plan = await db.plan.findUniqueOrThrow({ where: { code: planCode } });
   const org = await db.organization.findUniqueOrThrow({ where: { id: orgId } });
   const start = org.currentPeriodEnd && org.currentPeriodEnd > new Date() ? org.currentPeriodEnd : new Date();
   const end = addMonths(start, cycle === "YEARLY" ? 12 : 1);
-  const count = await db.subscriptionInvoice.count();
   return db.subscriptionInvoice.create({
     data: {
       orgId,
-      number: `OV-${new Date().getFullYear()}-${String(count + 1).padStart(5, "0")}`,
+      number: await nextInvoiceNumber(),
       planCode,
       cycle,
       amount: cycle === "YEARLY" ? plan.priceYearlyUsd : plan.priceMonthlyUsd,
@@ -25,16 +38,96 @@ export async function createSubscriptionInvoice(orgId: string, planCode: string,
   });
 }
 
-/** Marks a subscription invoice paid and extends the tenant's subscription. Idempotent. */
-export async function activateInvoice(invoiceId: string, method: string, reference?: string) {
+/**
+ * Marks a subscription invoice paid and extends the tenant's subscription. Idempotent.
+ * `approval` records which MG Advisory user confirmed the payment.
+ */
+export async function activateInvoice(
+  invoiceId: string,
+  method: string,
+  reference?: string,
+  approval?: { byId?: string; notes?: string },
+) {
   const inv = await db.subscriptionInvoice.findUniqueOrThrow({ where: { id: invoiceId } });
   if (inv.status === "PAID") return inv;
   const plan = await db.plan.findUniqueOrThrow({ where: { code: inv.planCode } });
+  // A renewal approved after the old period lapsed should still run a full term from today.
+  const now = new Date();
+  const periodEnd = inv.periodEnd > now ? inv.periodEnd : addMonths(now, inv.cycle === "YEARLY" ? 12 : 1);
   await db.organization.update({
     where: { id: inv.orgId },
-    data: { planId: plan.id, billingCycle: inv.cycle, subscriptionStatus: "ACTIVE", currentPeriodEnd: inv.periodEnd },
+    data: { planId: plan.id, billingCycle: inv.cycle, subscriptionStatus: "ACTIVE", currentPeriodEnd: periodEnd, suspendedAt: null },
   });
-  return db.subscriptionInvoice.update({ where: { id: inv.id }, data: { status: "PAID", paidAt: new Date(), method, reference } });
+  return db.subscriptionInvoice.update({
+    where: { id: inv.id },
+    data: {
+      status: "PAID",
+      paidAt: now,
+      method,
+      reference,
+      periodEnd,
+      approvedById: approval?.byId ?? null,
+      approvedAt: approval?.byId ? now : null,
+      notes: approval?.notes ?? inv.notes,
+    },
+  });
+}
+
+/**
+ * Platform-owner shortcut: raise a subscription invoice for a client, mark it paid and
+ * activate the plan in one step. Used when MG Advisory has received payment outside the
+ * app (bank transfer, EcoCash, cash) and is granting access for the term.
+ */
+export async function grantSubscription(args: {
+  orgId: string;
+  planCode: string;
+  cycle: "MONTHLY" | "YEARLY";
+  /** Number of months of access to grant. Defaults to the cycle length (1 or 12). */
+  months?: number;
+  method?: string;
+  reference?: string;
+  amount?: number;
+  approvedById?: string;
+  notes?: string;
+  /** Start the term from today rather than from the end of the current period. */
+  startNow?: boolean;
+}) {
+  const plan = await db.plan.findUniqueOrThrow({ where: { code: args.planCode } });
+  const org = await db.organization.findUniqueOrThrow({ where: { id: args.orgId } });
+  const months = args.months ?? (args.cycle === "YEARLY" ? 12 : 1);
+  const now = new Date();
+  const start = !args.startNow && org.currentPeriodEnd && org.currentPeriodEnd > now ? org.currentPeriodEnd : now;
+  const end = addMonths(start, months);
+  const inv = await db.subscriptionInvoice.create({
+    data: {
+      orgId: args.orgId,
+      number: await nextInvoiceNumber(),
+      planCode: plan.code,
+      cycle: args.cycle,
+      amount: args.amount ?? (args.cycle === "YEARLY" ? plan.priceYearlyUsd : plan.priceMonthlyUsd),
+      status: "PAID",
+      method: args.method ?? "MANUAL",
+      reference: args.reference,
+      periodStart: start,
+      periodEnd: end,
+      paidAt: now,
+      approvedById: args.approvedById,
+      approvedAt: args.approvedById ? now : null,
+      notes: args.notes,
+    },
+  });
+  await db.organization.update({
+    where: { id: args.orgId },
+    data: { planId: plan.id, billingCycle: args.cycle, subscriptionStatus: "ACTIVE", currentPeriodEnd: end, suspendedAt: null },
+  });
+  return inv;
+}
+
+/** Moves a client onto a different plan without touching their paid-up period. */
+export async function changePlan(orgId: string, planCode: string) {
+  const plan = await db.plan.findUniqueOrThrow({ where: { code: planCode } });
+  await db.organization.update({ where: { id: orgId }, data: { planId: plan.id } });
+  return plan;
 }
 
 // ───────────── Paynow (Zimbabwe: EcoCash, OneMoney, Visa/Mastercard, ZIMSWITCH) ─────────────

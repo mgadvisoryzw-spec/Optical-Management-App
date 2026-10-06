@@ -85,7 +85,7 @@ export const getContext = cache(async () => {
     include: { organization: { include: { plan: true, branches: { where: { active: true }, orderBy: { name: "asc" } } } } },
   });
   if (!user || !user.active) redirect("/login");
-  if (!user.organization) redirect(user.isSuperAdmin ? "/admin" : "/login");
+  if (!user.organization) redirect(user.isSuperAdmin ? "/platform" : "/login");
 
   const org = user.organization;
   const branches = org.branches;
@@ -134,13 +134,21 @@ export async function requireWrite(perm: Permission) {
   return ctx;
 }
 
-export async function requireSuperAdmin() {
+/**
+ * Guards the MG Advisory platform console. Only the platform owner account
+ * (isSuperAdmin) may reach /platform; practice users are sent back to their own app.
+ */
+export const requirePlatformOwner = cache(async () => {
   const session = await readSession();
-  if (!session) redirect("/login");
+  if (!session) redirect("/platform/login");
   const user = await db.user.findUnique({ where: { id: session.uid } });
-  if (!user?.isSuperAdmin) redirect("/app");
+  if (!user || !user.active) redirect("/platform/login");
+  if (!user.isSuperAdmin) redirect("/app");
   return user;
-}
+});
+
+/** @deprecated use {@link requirePlatformOwner} */
+export const requireSuperAdmin = requirePlatformOwner;
 
 /** Prisma `where` fragment that scopes a query to the active branch. */
 export function branchScope(ctx: { branchId: string | null }) {

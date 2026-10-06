@@ -4,6 +4,7 @@ import { getContext } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Badge, Card, EmptyState, LinkButton, PageHeader, Table } from "@/components/ui";
 import { age, fmtDate, fullName } from "@/lib/utils";
+import { likeAny } from "@/lib/search";
 import type { Prisma } from "@prisma/client";
 
 export const metadata = { title: "Patients" };
@@ -18,7 +19,7 @@ export default async function PatientsPage({ searchParams }: { searchParams: Pro
   if (q) {
     const parts = q.split(/\s+/);
     where.AND = parts.map((p) => ({
-      OR: [{ firstName: { contains: p } }, { lastName: { contains: p } }, { phone: { contains: p } }, { patientNo: { contains: p } }, { medicalAidNo: { contains: p } }, { nationalId: { contains: p } }],
+      OR: likeAny(["firstName", "lastName", "phone", "patientNo", "medicalAidNo", "nationalId"], p),
     }));
   }
   if (sp.aid) where.medicalAidId = sp.aid;

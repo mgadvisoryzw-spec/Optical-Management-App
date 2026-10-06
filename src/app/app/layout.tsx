@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { LogOut, Search } from "lucide-react";
 import { getContext, BRANCH_COOKIE } from "@/lib/auth";
 import { PERMISSIONS, ROLE_LABELS, can } from "@/lib/constants";
+import { VENDOR } from "@/lib/platform";
 import { Sidebar } from "./sidebar";
 import { logoutAction } from "../(auth)/actions";
 import { AutoSubmitSelect } from "@/components/client";
@@ -74,6 +75,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="mx-auto max-w-[1400px] px-4 py-8 sm:px-6">{children}</main>
+        <footer className="no-print mx-auto max-w-[1400px] px-4 pb-8 text-xs text-slate-400 sm:px-6">
+          OptiVault · developed and supported by MG Advisory. Billing or support queries: {VENDOR.supportEmail}
+        </footer>
         <Suspense fallback={null}>
           <Flash />
         </Suspense>
