@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { Badge, Card, EmptyState, LinkButton, PageHeader, Table } from "@/components/ui";
 import { ORDER_STATUSES, labelOf, toneOf } from "@/lib/constants";
 import { cn, fmtDate, fullName, money } from "@/lib/utils";
+import { like } from "@/lib/search";
 import type { Prisma } from "@prisma/client";
 
 export const metadata = { title: "Orders" };
@@ -15,7 +16,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Promi
   const where: Prisma.OrderWhereInput = { orgId: ctx.orgId, ...branchScope(ctx) };
   if (sp.status === "OPEN") where.status = { in: ["AWAITING_AUTH", "ORDERED", "IN_LAB", "READY"] };
   else if (sp.status) where.status = sp.status;
-  if (sp.q) where.OR = [{ orderNo: { contains: sp.q } }, { patient: { lastName: { contains: sp.q } } }, { patient: { firstName: { contains: sp.q } } }];
+  if (sp.q) where.OR = [{ orderNo: like(sp.q) }, { patient: { lastName: like(sp.q) } }, { patient: { firstName: like(sp.q) } }];
 
   const [orders, counts] = await Promise.all([
     db.order.findMany({ where, include: { patient: true, branch: true, medicalAid: true }, orderBy: { createdAt: "desc" }, take: 100 }),

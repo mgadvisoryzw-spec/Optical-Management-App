@@ -5,3 +5,9 @@ node_modules
 .env
 next-env.d.ts
 *.tsbuildinfo
+
+# Database exports contain password hashes and patient records - never commit them.
+backup/
+*.sqlite.bak
+.env.*
+!.env.example

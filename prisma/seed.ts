@@ -1,4 +1,5 @@
-/* Seeds subscription plans, a platform super-admin and a fully populated demo practice. */
+/* Seeds subscription plans, the MG Advisory platform owner and a fully populated demo practice. */
+import { randomBytes } from "node:crypto";
 import type { Product } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { db } from "../src/lib/db";
@@ -21,11 +22,73 @@ async function main() {
     await db.plan.upsert({ where: { code: p.code }, create: { ...rest, features: JSON.stringify(features) }, update: { ...rest, features: JSON.stringify(features) } });
   }
 
+  // ── MG Advisory: the platform owner account that administers every client ──
+  // Signs in at /platform/login, not the practice login. Override with
+  // PLATFORM_OWNER_EMAIL / PLATFORM_OWNER_NAME / PLATFORM_OWNER_PASSWORD in .env.
+  const ownerEmail = (process.env.PLATFORM_OWNER_EMAIL || "owner@mgadvisory.co.zw").toLowerCase();
+  const ownerName = process.env.PLATFORM_OWNER_NAME || "MG Advisory";
+  // There is deliberately no default password in the repo: leaving it unset gives
+  // this install its own random one, printed once below.
+  const chosenPassword = process.env.PLATFORM_OWNER_PASSWORD;
+  const ownerPassword = chosenPassword || randomBytes(12).toString("base64url");
+  const ownerExisted = !!(await db.user.findUnique({ where: { email: ownerEmail } }));
+
   await db.user.upsert({
-    where: { email: "admin@optivault.app" },
-    create: { email: "admin@optivault.app", name: "Platform Admin", passwordHash: await bcrypt.hash("admin1234", 10), role: "OWNER", isSuperAdmin: true },
-    update: {},
+    where: { email: ownerEmail },
+    create: {
+      email: ownerEmail,
+      name: ownerName,
+      passwordHash: await bcrypt.hash(ownerPassword, 10),
+      role: "OWNER",
+      isSuperAdmin: true,
+      platformTitle: "Platform owner",
+    },
+    update: {
+      name: ownerName,
+      isSuperAdmin: true,
+      active: true,
+      platformTitle: "Platform owner",
+      // Re-applied only when a password was set explicitly, so that changing
+      // PLATFORM_OWNER_PASSWORD and re-seeding actually resets it. Without this
+      // the hash would be written on create only and the change silently ignored.
+      ...(chosenPassword ? { passwordHash: await bcrypt.hash(chosenPassword, 10) } : {}),
+    },
   });
+
+  if (!ownerExisted && !chosenPassword) {
+    const rule = "-".repeat(66);
+    console.log(
+      [
+        "",
+        rule,
+        "  PLATFORM OWNER ACCOUNT CREATED - copy this password now.",
+        "  It is shown once and cannot be recovered.",
+        "",
+        "    Sign in at : /platform/login",
+        "    Email      : " + ownerEmail,
+        "    Password   : " + ownerPassword,
+        "",
+        "  Change it in the console under Activity log.",
+        rule,
+        "",
+      ].join("\n"),
+    );
+  } else {
+    console.log("Platform owner: " + ownerEmail + " (sign in at /platform/login)");
+  }
+
+  // The old admin@optivault.app / admin1234 super-admin is deliberately NOT
+  // created any more: its password shipped in a public repo, so every install
+  // would have had full platform access behind a credential anyone could read.
+  // Deactivate it wherever it still exists from an earlier seed.
+  const legacy = await db.user.findUnique({ where: { email: "admin@optivault.app" } });
+  if (legacy?.active) {
+    await db.user.update({
+      where: { id: legacy.id },
+      data: { active: false, passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 10) },
+    });
+    console.log("Deactivated the legacy admin@optivault.app super-admin (known password).");
+  }
 
   if (await db.user.findUnique({ where: { email: "owner@demo-optical.co.zw" } })) {
     console.log("Demo practice already exists. Delete prisma/dev.db and run again to start fresh.");

@@ -1,19 +1,19 @@
-// OptiVault — multi-tenant optical practice management + accounting
+// ─────────────────────────────────────────────────────────────────────────────
+// GENERATED FILE — DO NOT EDIT.
+// Produced from prisma/schema.prisma by scripts/sync-sqlite-schema.mjs.
+// Edit prisma/schema.prisma instead, then run: npm run schema:sync
 //
-// THIS IS THE SOURCE OF TRUTH for the data model. It targets PostgreSQL, which is
-// what every deployment uses: one shared database so a login created on any
-// computer works on every other one.
-//
-// `prisma/schema.sqlite.prisma` is GENERATED from this file for offline local
-// development (`npm run dev`). Never edit it by hand — edit this file and the
-// sync runs automatically, or run `npm run schema:sync`.
+// This SQLite copy exists only for offline local development (npm run dev).
+// Every real deployment uses the PostgreSQL schema so that all computers share
+// one database.
+// ─────────────────────────────────────────────────────────────────────────────
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 

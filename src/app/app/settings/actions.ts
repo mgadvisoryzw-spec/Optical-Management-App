@@ -64,8 +64,81 @@ export async function toggleUser(id: string) {
   const ctx = await requireWrite("settings");
   const u = await db.user.findFirstOrThrow({ where: { id, orgId: ctx.orgId } });
   if (u.id === ctx.user.id) return;
+  if (u.active && (await lastActiveOwner(ctx.orgId, u))) {
+    redirect(`/app/settings/users?error=${encodeURIComponent("You can't deactivate the last active owner. Promote someone else to Owner first.")}`);
+  }
   await db.user.update({ where: { id }, data: { active: !u.active } });
   revalidatePath("/app/settings/users");
+}
+
+/** True when `user` is the only active OWNER left in the practice. */
+async function lastActiveOwner(orgId: string, user: { id: string; role: string }) {
+  if (user.role !== "OWNER") return false;
+  const others = await db.user.count({ where: { orgId, role: "OWNER", active: true, id: { not: user.id } } });
+  return others === 0;
+}
+
+/**
+ * Edits an existing team member — including the practice administrator or owner.
+ * Owners may change anyone; administrators may edit everyone except owners, and
+ * cannot hand out the Owner role.
+ */
+export async function updateUser(id: string, fd: FormData) {
+  const ctx = await requireWrite("settings");
+  const target = await db.user.findFirstOrThrow({ where: { id, orgId: ctx.orgId } });
+  const back = `/app/settings/users/${id}`;
+  const fail = (msg: string) => redirect(`${back}?error=${encodeURIComponent(msg)}`);
+
+  const isOwner = ctx.user.role === "OWNER";
+  if (target.role === "OWNER" && !isOwner) fail("Only an owner can edit another owner's account.");
+
+  const role = str(fd.get("role"));
+  if (!ROLES.includes(role as (typeof ROLES)[number])) fail("Pick a valid role.");
+  if (role === "OWNER" && !isOwner) fail("Only an owner can grant the Owner role.");
+  if (target.role === "OWNER" && role !== "OWNER" && (await lastActiveOwner(ctx.orgId, target))) {
+    fail("This is the last owner. Promote someone else to Owner before changing this role.");
+  }
+
+  const email = str(fd.get("email")).toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)) fail("Enter a valid email address.");
+  const clash = await db.user.findUnique({ where: { email } });
+  if (clash && clash.id !== id) fail("Another account already uses that email address.");
+
+  const active = str(fd.get("active")) === "on";
+  if (!active && target.id === ctx.user.id) fail("You can't deactivate your own account.");
+  if (!active && (await lastActiveOwner(ctx.orgId, target))) fail("You can't deactivate the last active owner.");
+
+  // Changing your own role could lock you out of this page, so block it.
+  if (target.id === ctx.user.id && role !== target.role) fail("You can't change your own role. Ask another owner to do it.");
+
+  const password = str(fd.get("password"));
+  if (password && password.length < 8) fail("A new password must be at least 8 characters long.");
+
+  await db.user.update({
+    where: { id },
+    data: {
+      name: str(fd.get("name")) || target.name,
+      email,
+      phone: optStr(fd.get("phone")),
+      role,
+      branchId: optStr(fd.get("branchId")),
+      active,
+      ...(password ? { passwordHash: await hashPassword(password) } : {}),
+    },
+  });
+  await db.auditLog.create({
+    data: {
+      orgId: ctx.orgId,
+      userId: ctx.user.id,
+      action: "UPDATE",
+      entity: "User",
+      entityId: id,
+      detail: `${target.name} (${target.role}) → ${str(fd.get("name"))} (${role})${password ? " · password reset" : ""}${active === target.active ? "" : active ? " · reactivated" : " · deactivated"}`,
+    },
+  });
+  revalidatePath("/app/settings/users");
+  revalidatePath("/app", "layout");
+  redirect(`/app/settings/users?done=${encodeURIComponent(`${str(fd.get("name")) || target.name} updated.`)}`);
 }
 
 export async function saveCurrency(fd: FormData) {

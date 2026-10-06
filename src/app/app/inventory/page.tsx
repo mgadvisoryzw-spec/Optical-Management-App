@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { Badge, Card, EmptyState, LinkButton, PageHeader, StatCard, Table } from "@/components/ui";
 import { LENS_TYPES, PRODUCT_CATEGORIES, labelOf } from "@/lib/constants";
 import { cn, money, round2 } from "@/lib/utils";
+import { likeAny } from "@/lib/search";
 import type { Prisma } from "@prisma/client";
 
 export const metadata = { title: "Inventory" };
@@ -14,7 +15,7 @@ export default async function InventoryPage({ searchParams }: { searchParams: Pr
   const ctx = await getContext();
   const where: Prisma.ProductWhereInput = { orgId: ctx.orgId, active: true };
   if (sp.cat) where.category = sp.cat;
-  if (sp.q) where.OR = ["name", "sku", "brand", "model", "colour", "reference"].map((f) => ({ [f]: { contains: sp.q } }));
+  if (sp.q) where.OR = likeAny(["name", "sku", "brand", "model", "colour", "reference"], sp.q);
   const products = await db.product.findMany({ where, include: { stock: true, supplier: true }, orderBy: [{ category: "asc" }, { name: "asc" }], take: 500 });
   const qty = (p: (typeof products)[number]) => p.stock.filter((s) => !ctx.branchId || s.branchId === ctx.branchId).reduce((a, s) => a + s.quantity, 0);
   let rows = products.map((p) => ({ ...p, qty: qty(p) }));
