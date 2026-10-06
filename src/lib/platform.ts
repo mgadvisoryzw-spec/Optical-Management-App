@@ -12,8 +12,6 @@ export const VENDOR = {
   tagline: "Optical practice management & accounting",
   billingEmail: "mgadvisoryzw@gmail.com",
   supportEmail: "mgadvisoryzw@gmail.com",
-  /** Login email for the dedicated platform owner account. Override with PLATFORM_OWNER_EMAIL. */
-  ownerEmail: process.env.PLATFORM_OWNER_EMAIL?.toLowerCase() || "owner@mgadvisory.co.zw",
 };
 
 export const PLATFORM_ACTIONS = {

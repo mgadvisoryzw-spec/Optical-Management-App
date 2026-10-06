@@ -43,7 +43,16 @@ async function main() {
       isSuperAdmin: true,
       platformTitle: "Platform owner",
     },
-    update: { name: ownerName, isSuperAdmin: true, active: true, platformTitle: "Platform owner" },
+    update: {
+      name: ownerName,
+      isSuperAdmin: true,
+      active: true,
+      platformTitle: "Platform owner",
+      // Re-applied only when a password was set explicitly, so that changing
+      // PLATFORM_OWNER_PASSWORD and re-seeding actually resets it. Without this
+      // the hash would be written on create only and the change silently ignored.
+      ...(chosenPassword ? { passwordHash: await bcrypt.hash(chosenPassword, 10) } : {}),
+    },
   });
 
   if (!ownerExisted && !chosenPassword) {
@@ -68,12 +77,18 @@ async function main() {
     console.log("Platform owner: " + ownerEmail + " (sign in at /platform/login)");
   }
 
-  // Legacy super-admin kept so existing installs don't lose access.
-  await db.user.upsert({
-    where: { email: "admin@optivault.app" },
-    create: { email: "admin@optivault.app", name: "Platform Admin", passwordHash: await bcrypt.hash("admin1234", 10), role: "OWNER", isSuperAdmin: true, platformTitle: "Platform admin" },
-    update: {},
-  });
+  // The old admin@optivault.app / admin1234 super-admin is deliberately NOT
+  // created any more: its password shipped in a public repo, so every install
+  // would have had full platform access behind a credential anyone could read.
+  // Deactivate it wherever it still exists from an earlier seed.
+  const legacy = await db.user.findUnique({ where: { email: "admin@optivault.app" } });
+  if (legacy?.active) {
+    await db.user.update({
+      where: { id: legacy.id },
+      data: { active: false, passwordHash: await bcrypt.hash(randomBytes(32).toString("hex"), 10) },
+    });
+    console.log("Deactivated the legacy admin@optivault.app super-admin (known password).");
+  }
 
   if (await db.user.findUnique({ where: { email: "owner@demo-optical.co.zw" } })) {
     console.log("Demo practice already exists. Delete prisma/dev.db and run again to start fresh.");

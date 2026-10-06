@@ -23,7 +23,7 @@ export default function PlatformLoginPage() {
             Sign in to see every practice running on {VENDOR.product}, their plans and subscriptions, and to approve
             billing when a client has paid or their subscription has expired.
           </p>
-          <PlatformLoginForm email={VENDOR.ownerEmail} />
+          <PlatformLoginForm />
         </div>
         <p className="mt-8 text-center text-xs text-slate-500">
           {VENDOR.product} is designed, built and operated by {VENDOR.name}.

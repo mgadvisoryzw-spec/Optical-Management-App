@@ -5,7 +5,7 @@ import Link from "next/link";
 import { platformLoginAction } from "../../(auth)/actions";
 import { SubmitButton } from "@/components/client";
 
-export function PlatformLoginForm({ email }: { email: string }) {
+export function PlatformLoginForm() {
   const [state, action] = useActionState(platformLoginAction, undefined);
   return (
     <form action={action} className="space-y-4">
@@ -17,7 +17,7 @@ export function PlatformLoginForm({ email }: { email: string }) {
           type="email"
           required
           autoComplete="email"
-          placeholder={email}
+          placeholder="you@yourcompany.com"
           className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-slate-500 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30"
         />
       </label>
